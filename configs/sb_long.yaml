@@ -68,8 +68,8 @@ comming_angle: 60 # degree
 leaving_angle: 20 # degree
 decision_speed: 8 # rad/
 spin_select_tau: 0.6 # s 快慢判定低通时间常数
-spin_enter_high: 2.0 # rad/s 进入高速反陀螺
-spin_exit_high: 1.3 # rad/s 退出高速追板
+spin_enter_high: 1.5 # rad/s 进入高速反陀螺 (10-25 由 2.0 改: 1.5~2rad/s 时低速追板追不上会漏板)
+spin_exit_high: 0.3 # rad/s 退出高速追板 (10-25 由 1.3 改: 回差拉大, 1rad/s 附近不再来回切模式, 一块板不会打两次)
 spin_high_settle_time: 0 # s 切入高速后等待云台切换完成再开火
 spin_vyaw_settle_time: 0 # s 高速vyaw稳定后才允许开火
 spin_vyaw_stable_band: 0.4 # rad/s vyaw在此范围内才算稳定

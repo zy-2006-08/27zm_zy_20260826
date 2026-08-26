@@ -1,0 +1,158 @@
+# enemy_color: "red"
+enemy_color: "blue"
+
+#####-----神经网络参数-----#####
+yolo_name: yolov5
+classify_model: ../assets/tiny_resnet.onnx
+yolo11_model_path: ../assets/yolo11.xml
+yolov8_model_path: ../assets/yolov8.xml
+yolov5_model_path: ../assets/yolov5.xml
+device: CPU
+min_confidence: 0.8
+use_traditional: true
+
+#####-----ROI-----#####
+roi: 
+  x: 420
+  y: 50
+  width: 600
+  height: 600
+
+use_roi: false
+
+#####-----传统方法参数-----#####
+threshold: 150
+max_angle_error: 45 # degree
+min_lightbar_ratio: 1.5
+max_lightbar_ratio: 20
+min_lightbar_length: 8
+min_armor_ratio: 1
+max_armor_ratio: 5
+max_side_ratio: 1.5
+max_rectangular_error: 25 # degree
+min_confidence: 0.8
+
+#####-----tracker参数-----#####
+min_detect_count: 5
+max_temp_lost_count: 11
+outpost_max_temp_lost_count: 75
+
+#####-----aimer参数-----#####
+yaw_offset: -0.5 # degree -2.5
+pitch_offset: 2 # degree 2
+comming_angle: 60 # degree
+leaving_angle: 20 # degree
+decision_speed: 8 # rad/s
+high_speed_delay_time: 0.030 # s
+low_speed_delay_time: 0.015 # s
+far_pitch_offset: 1.2
+
+#####-----shooter参数-----#####
+first_tolerance: 3 # 近距离射击容差，degree
+second_tolerance: 2 # 远距离射击容差，degree
+judge_distance: 2 #距离判断阈值
+auto_fire: true # 是否由自瞄控制射击
+
+# camera_name: "hikrobot"
+# exposure_us: 2000
+# gain: 16
+# vid_pid: "2bdf:0001"
+# flip: false
+# mirror: false
+# timestamp_offset_us: 1000 #us
+
+camera_name: "daheng"
+camera_sn: "FDN24040486"
+exposure_us: 4000
+gain: 0.5
+gamma: 0.5
+img_gamma: 1
+vid_pid: "2ba2:4d55"
+flip: true
+mirror: true
+timestamp_offset_us: 1000 #us
+
+# -1  0  0
+#  0 -1  0
+#  0  0  1
+# R_gimbal2imubody: [-1, 0, 0, 0, -1, 0, 0, 0, 1]
+R_gimbal2imubody: [-1, 0, 0, 0, -1, 0, 0, 0, 1]
+
+# 重投影误差: 0.1164px
+camera_matrix: [3564.8174968431526, 0, 708.9912310363035, 0, 3564.8889674382763, 515.3306880094015, 0, 0, 1]
+distort_coeffs: [-0.012799652349955518, 0.06769407527114184, 0.000712447471914966, -0.0016254748233795065, 2.541863970933887]
+
+# 相机同理想情况的偏角: yaw-0.60 pitch-0.35 roll-1.53 degree
+# 标定板到世界坐标系原点的水平距离: 3.23 m
+# 标定板同竖直摆放时的偏角: yaw37.61 pitch3.23 roll-0.06 degree
+R_camera2gimbal: [0.010630568168778162, -0.005789248980673708, 0.9999267351244534, -0.9995886616740502, -0.02669899594545312, 0.010472395532356843, 0.02663641254167717, -0.9996267544497518, -0.006070693137125566]
+t_camera2gimbal: [0.115368524404037, -0.047768060813373876, 0.05836069500887165]
+#####-----cboard参数-----#####
+quaternion_canid: 0x100
+bullet_speed_canid: 0x101
+send_canid: 0xff
+can_interface: "can0"
+
+#####-----gimbal参数-----#####
+com_port: "/dev/ttyACM0"
+# 陀螺仪是否装错, 编号012分别代表电控坐标系ypr，想换旋转轴只需要对编号进行互换即可，负号就是对当前值取负，交换完再取负
+# 上车前记得对齐电控坐标系和济瞄惯性系
+gimbal_y1: 1
+gimbal_p2: -3
+gimbal_r3: -2
+# 济瞄的惯性系  z轴往上, x轴是枪管指向
+#     x  z
+#      \ |
+#       \|
+# y_ _ _ 0   z:yaw   x:roll   y:pitch
+
+
+#####-----planner-----#####
+target_dist_error: -0.23
+target_h_error: 0.28
+fire_thresh: 0.003
+small_armor_tolerance: 0.12
+big_armor_tolerance: 0.22
+tower_and_base_armor_tolerance_: 0.10  # 26赛季前哨站和基地装甲板检测宽度
+gimbal_control_delay: 0.08
+tower_pitch_prediction_time: 0.05
+
+max_yaw_acc: 50
+Q_yaw: [9e6, 0]
+R_yaw: [1]
+
+max_pitch_acc: 100
+Q_pitch: [9e6,0]
+R_pitch: [1]
+
+#####-----buff_detector参数-----#####
+detect:
+  contrast: 1
+  brightness: 
+    blue: -120
+    red: -100
+  brightness_threshold:
+    blue: 120
+    red: 40
+  morphology_size:
+    blue: 3
+    red: 3
+  dilate_size: 2
+  # canny_low_threshold: 100
+  # canny_high_threshold: 180
+  # approx_epsilon: 1.0
+  R_contours_min_area: 200
+  R_contours_max_area: 600
+  fanblades_head_contours_min_area: 3000
+  fanblades_head_contours_max_area: 8000
+  fanblades_body_contours_min_area: 1000
+  fanblades_body_contours_max_area: 4000
+  standard_fanblade_path: ./assets/standard_fanblade.jpg
+
+model: "../assets/yolo11_buff_int8.xml"
+#####-----buff_aimer参数-----#####
+aim_time: 0.150         # s
+wait_time: 0.300        # s
+command_fire_gap: 0.080 # s
+fire_gap_time: 0.700   # s
+predict_time: 0.120    # s

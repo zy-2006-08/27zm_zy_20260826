@@ -1,0 +1,53 @@
+# ---------------------------------------------------------------------------
+# Build output / CMake tree (created by `cmake -B build`, see make.sh)
+# ---------------------------------------------------------------------------
+build/
+
+# ---------------------------------------------------------------------------
+# Runtime-generated directories and files.
+# These do NOT exist in a fresh clone; the programs create them while running.
+# ---------------------------------------------------------------------------
+
+# Log directory created at runtime by autostart.sh (under build/)
+logs/
+
+# Written by `screen -L` in autostart.sh
+*.screenlog
+
+# Calibration capture output: JPG frames + matching quaternions, written at
+# runtime by calibration/capture.cpp and read back by calibrate_input.
+# Deliberately NOT tracked; each robot re-shoots its own calibration set.
+assets/img_with_q/
+
+# The calibration tool rewrites configs/calibration.yaml in place and leaves
+# the previous version behind as a .bak sibling file.
+*.bak
+
+# Video recordings / captured frames produced by tools/recorder.hpp
+records/
+imgs/
+
+# HikRobot SDK runtime log directory (created next to the executable)
+MvSdkLog/
+
+# ---------------------------------------------------------------------------
+# Agent / tooling directories (local only, never committed)
+# ---------------------------------------------------------------------------
+.omo/
+.codegraph/
+
+# ---------------------------------------------------------------------------
+# Editor and OS noise
+# ---------------------------------------------------------------------------
+*.swp
+*.swo
+*~
+.idea/
+.cache/
+compile_commands.json
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+desktop.ini

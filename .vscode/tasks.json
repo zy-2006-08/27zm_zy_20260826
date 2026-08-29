@@ -1,16 +1,198 @@
 {
-    // See https://go.microsoft.com/fwlink/?LinkId=733558
-    // for the documentation about the tasks.json format
+    // VS Code 任务配置。
+    //
+    // ┌─────────────────────────────────────────────────────────────────┐
+    // │ 快捷键与 STM32 电控工程共用同一套 keybindings，无需为本工程改键： │
+    // │   Alt+,  → build             编译                                │
+    // │   Alt+N  → flash             电控=烧录C板 / 视觉=运行离线测试     │
+    // │   Alt+M  → build and flash   编译 + 上面那步                     │
+    // └─────────────────────────────────────────────────────────────────┘
+    //
+    // 为什么视觉工程里也用 "flash" 这个名字：
+    //   keybindings.json 是全局的（每个 VSCode profile 一份），args 里写死了
+    //   task 的 label。如果本工程把 label 叫 "run"，就得改全局快捷键，
+    //   那样电控工程的 Alt+N 反而失效。
+    //   VSCode 的 runTask 是在「当前工作区」里找 label，所以两个工程各自
+    //   定义同名 task，一套快捷键就能通用 —— 打开哪个工程就跑哪个的动作。
+    //
+    //   电控 flash = openocd 把 .elf 写进 C 板
+    //   视觉 flash = 直接运行 auto_aim_test（程序在电脑上跑，没有烧录这一步）
+    //
+    // 另外也保留了语义更准的别名 run / build and run，从任务列表里选时更好认。
     "version": "2.0.0",
+
+    // 自定义 gcc 报错匹配规则。
+    //
+    // 为什么不用内置的 "$gcc"：那个由微软 C/C++ 扩展（cpptools）提供，
+    // 本工程为了消除假红线把 cpptools 的分析关掉了（改用 clangd），
+    // 于是 $gcc 不存在，会报 "problemMatcher 引用无效"。
+    // 这里手写等价正则，不依赖任何扩展。
+    //
+    // 匹配 gcc/g++ 标准报错格式：
+    //   tasks/auto_aim/detector.cpp:75:10: error: 'foo' was not declared
+    //   └────── file ─────────────┘ │  │   └ severity  └ message
+    //                            line col
+    "problemMatcher": [
+        {
+            "name": "gcc-local",
+            "owner": "cpp",
+            "fileLocation": [
+                "relative",
+                "${workspaceFolder}"
+            ],
+            "pattern": {
+                "regexp": "^(.*?):(\\d+):(\\d+):\\s+(warning|error|note|fatal error):\\s+(.*)$",
+                "file": 1,
+                "line": 2,
+                "column": 3,
+                "severity": 4,
+                "message": 5
+            }
+        }
+    ],
+
     "tasks": [
         {
+            // Alt+, / Ctrl+Shift+B
+            // 增量编译，只重编改动过的文件，几秒钟。日常改代码用这个。
+            // 新增/删除源文件或改了 CMakeLists.txt 时用 rebuild。
             "label": "build",
             "type": "shell",
-            "command": "./make.sh",
+            "command": "make -C build -j$(nproc)",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
             "group": {
                 "kind": "build",
                 "isDefault": true
+            },
+            // 报错进"问题"面板（Ctrl+Shift+M），终端里 文件:行:列 可 Ctrl+点击 跳转
+            "problemMatcher": "$gcc-local",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            }
+        },
+        {
+            // Alt+N —— 名字沿用电控工程的 "flash" 以共享快捷键，实际动作是运行。
+            //
+            // 跑离线测试：读 assets/demo 下的录像 + 每帧云台姿态，
+            // 完整走一遍识别→解算→跟踪→火控，弹窗显示结果。不需要相机和 C 板。
+            //
+            // cwd 必须是 build —— 程序内部用 ../configs/demo.yaml 这类相对路径，
+            // 在别的目录跑会找不到配置文件然后直接 exit(1)。
+            "label": "flash",
+            "type": "shell",
+            "command": "./auto_aim_test",
+            "options": {
+                "cwd": "${workspaceFolder}/build"
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            }
+        },
+        {
+            // Alt+M —— 最常用。名字沿用电控工程以共享快捷键。
+            "label": "build and flash",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "build",
+                "flash"
+            ],
+            "problemMatcher": []
+        },
+        {
+            // 语义别名，和上面的 flash 是同一件事。
+            // 从任务列表里手动选时，"run" 比 "flash" 好认。
+            "label": "run",
+            "type": "shell",
+            "command": "./auto_aim_test",
+            "options": {
+                "cwd": "${workspaceFolder}/build"
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            }
+        },
+        {
+            // 语义别名，等同 build and flash
+            "label": "build and run",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "build",
+                "flash"
+            ],
+            "problemMatcher": []
+        },
+        {
+            // 新增/删除源文件，或改了 CMakeLists.txt 时用。
+            // 重新走 cmake 配置，顺带生成 clangd 需要的 compile_commands.json。
+            "label": "rebuild",
+            "type": "shell",
+            "command": "bash make.sh",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "problemMatcher": "$gcc-local",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            }
+        },
+        {
+            // 只跑视频的某一段，反复调试特定画面。执行时弹输入框问起止帧号。
+            "label": "run range",
+            "type": "shell",
+            // 注意必须写成 -s=xxx 的等号形式。OpenCV CommandLineParser 不认空格形式，
+            // "-s 100" 会把 100 当成位置参数（输入路径），于是去开 100.avi，只报 GStreamer 警告然后退出。
+            "command": "./auto_aim_test -s=${input:startFrame} -e=${input:endFrame}",
+            "options": {
+                "cwd": "${workspaceFolder}/build"
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            }
+        },
+        {
+            // 清掉 build 重来。编译出诡异问题时用。
+            "label": "clean rebuild",
+            "type": "shell",
+            "command": "rm -rf build && bash make.sh",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": "$gcc-local",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
             }
         }
-     ]
+    ],
+    "inputs": [
+        {
+            "id": "startFrame",
+            "type": "promptString",
+            "description": "起始帧号",
+            "default": "0"
+        },
+        {
+            "id": "endFrame",
+            "type": "promptString",
+            "description": "结束帧号（0 = 到视频结尾）",
+            "default": "0"
+        }
+    ]
 }

@@ -7,28 +7,26 @@
 
 namespace auto_aim
 {
-class YOLOBase
-{
-public:
-  virtual std::list<Armor> detect(const cv::Mat & img, int frame_count) = 0;
+  class YOLOBase
+  {
+    public:
+    virtual std::list<Armor> detect(const cv::Mat & img, int frame_count) = 0;
 
-  virtual std::list<Armor> postprocess(
-    double scale, cv::Mat & output, const cv::Mat & bgr_img, int frame_count) = 0;
-};
+    virtual std::list<Armor> postprocess(double scale, cv::Mat & output, const cv::Mat & bgr_img, int frame_count) = 0;
+  };
 
-class YOLO
-{
-public:
-  YOLO(const std::string & config_path, bool debug = true);
+  class YOLO
+  {
+    public:
+    YOLO(const std::string & config_path, bool debug = true);
 
-  std::list<Armor> detect(const cv::Mat & img, int frame_count = -1);
+    std::list<Armor> detect(const cv::Mat & img, int frame_count = -1);
 
-  std::list<Armor> postprocess(
-    double scale, cv::Mat & output, const cv::Mat & bgr_img, int frame_count);
+    std::list<Armor> postprocess(double scale, cv::Mat & output, const cv::Mat & bgr_img, int frame_count);
 
-private:
-  std::unique_ptr<YOLOBase> yolo_;
-};
+    private:
+    std::unique_ptr<YOLOBase> yolo_;
+  };
 
 }  // namespace auto_aim
 

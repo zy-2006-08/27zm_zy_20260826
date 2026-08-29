@@ -106,7 +106,23 @@
       "future": "cpp",
       "cfenv": "cpp"
     },
-    "C_Cpp.errorSquiggles": "enabled",
+    // ==== C/C++ 代码提示：由 clangd 独占，cpptools 只保留调试功能 ====
+    //
+    // 本工程只能在 Linux 上编译（见 readme 第 2 节），OpenCV / Eigen / OpenVINO / fmt
+    // 都装在系统目录，不随仓库携带。在 Windows 上打开时这些头文件全都找不到，
+    // 两个插件会各画一套红线，且 cpptools 读的是 c_cpp_properties.json（纯 Linux 路径），
+    // 改 .clangd 对它无效。因此这里明确关掉 cpptools 的 IntelliSense，避免双份噪音。
+    //
+    // 关掉的只是"代码分析"，cpptools 的调试器（launch.json 里的 gdb）不受影响。
+    "C_Cpp.intelliSenseEngine": "disabled",
+    "C_Cpp.errorSquiggles": "disabled",
+    "C_Cpp.autocomplete": "disabled",
+    "C_Cpp.formatting": "disabled",
+
+    // ST 的 clangd 是给 STM32 工程用的，在本工程里会和主 clangd 抢同一个文件，
+    // 造成重复诊断。这里禁用它对本工程的接管。
+    "stm32cube-ide-clangd.enable": false,
+
     "terminal.integrated.profiles.linux": {
         "bash": {
           "path": "bash",

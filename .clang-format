@@ -3,7 +3,7 @@
 Language: Cpp
 BasedOnStyle: Google
 
-AccessModifierOffset: -2
+AccessModifierOffset: 0
 AlignAfterOpenBracket: AlwaysBreak
 BraceWrapping:
   AfterClass: true
@@ -11,11 +11,14 @@ BraceWrapping:
   AfterNamespace: true
   AfterStruct: true
   AfterEnum: true
+  AfterControlStatement: Always
+  BeforeElse: true
+  BeforeCatch: true
 BreakBeforeBraces: Custom
-ColumnLimit: 100
+NamespaceIndentation: All
+ColumnLimit: 0
 ConstructorInitializerIndentWidth: 0
 ContinuationIndentWidth: 2
 DerivePointerAlignment: false
 PointerAlignment: Middle
 ReflowComments: false
-...

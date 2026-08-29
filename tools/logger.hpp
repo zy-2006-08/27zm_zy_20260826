@@ -5,7 +5,7 @@
 
 namespace tools
 {
-std::shared_ptr<spdlog::logger> logger();
+  std::shared_ptr<spdlog::logger> logger();
 
 }  // namespace tools
 

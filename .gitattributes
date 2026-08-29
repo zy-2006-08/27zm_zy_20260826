@@ -1,0 +1,15 @@
+# 本工程只在 Linux 上编译，所有文本文件强制使用 LF 行尾。
+#
+# 背景：在 Windows 侧编辑或跑 clang-format.exe 会把行尾改成 CRLF，
+# 导致 git diff 出现上千行"内容没变但全是改动"的噪音，
+# 并且 make.sh 等脚本带 \r 时 bash 会报 bad interpreter（见 readme 第 8 节）。
+* text=auto eol=lf
+
+# 二进制文件不做任何行尾转换
+*.bin   binary
+*.onnx  binary
+*.avi   binary
+*.png   binary
+*.jpg   binary
+*.so    binary
+*.a     binary

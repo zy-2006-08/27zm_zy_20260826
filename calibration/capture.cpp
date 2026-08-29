@@ -12,12 +12,11 @@
 #include "tools/math_tools.hpp"
 #include "tools/yaml.hpp"
 
-
 const std::string keys =
   "{help h usage ?  |                          | 输出命令行参数说明}"
   "{@config-path c  | ../configs/calibration.yaml | yaml配置文件路径 }"
   "{output-folder o |      ../assets/img_with_q   | 输出文件夹路径   }";
- 
+
 void write_q(const std::string q_path, const Eigen::Quaterniond & q)
 {
   std::ofstream q_file(q_path);
@@ -27,8 +26,7 @@ void write_q(const std::string q_path, const Eigen::Quaterniond & q)
   q_file.close();
 }
 
-void capture_loop(
-  const std::string & config_path, const std::string & can, const std::string & output_folder)
+void capture_loop(const std::string & config_path, const std::string & can, const std::string & output_folder)
 {
   // io::CBoard cboard(config_path);
   io::Gimbal gimbal(config_path);
@@ -46,29 +44,30 @@ void capture_loop(
   tools::logger()->info("棋盘格标定板采集程序启动");
   tools::logger()->info("标定板内角点数量: {}列 x {}行 (对应{}x{}格子的棋盘格)", pattern_cols, pattern_rows, pattern_cols + 1, pattern_rows + 1);
   cv::Size pattern_size(pattern_cols, pattern_rows);  // 修改：棋盘格内角点数量
-  
+
   int count = 0;
-  while (true) {
+  while (true)
+  {
     camera.read(img, timestamp);
     Eigen::Quaterniond q = gimbal.q(timestamp);
 
     // 在图像上显示欧拉角，用来判断imuabs系的xyz正方向，同时判断imu是否存在零漂
     auto img_with_ypr = img.clone();
 
-
     std::vector<cv::Point2f> corners_2d;
     // 修改：使用棋盘格角点检测
-    bool success = cv::findChessboardCorners(img, pattern_size, corners_2d, 
-                                                                            // cv::CALIB_CB_NORMALIZE_IMAGE
-                                                                            // cv::CALIB_CB_FILTER_QUADS
-                                                                            cv::CALIB_CB_FAST_CHECK
-                                                                          );
+    bool success = cv::findChessboardCorners(
+      img, pattern_size, corners_2d,
+      // cv::CALIB_CB_NORMALIZE_IMAGE
+      // cv::CALIB_CB_FILTER_QUADS
+      cv::CALIB_CB_FAST_CHECK);
     Eigen::Vector3d zyx = tools::eulers(q, 2, 1, 0) * 57.3;  // degree
     tools::draw_text(img_with_ypr, fmt::format("Z {:.2f}", zyx[0]), {40, 40}, {0, 0, 255});
     tools::draw_text(img_with_ypr, fmt::format("Y {:.2f}", zyx[1]), {40, 80}, {0, 0, 255});
-    tools::draw_text(img_with_ypr, fmt::format("X {:.2f}", zyx[2]), {40, 120}, {0, 0, 255});    
+    tools::draw_text(img_with_ypr, fmt::format("X {:.2f}", zyx[2]), {40, 120}, {0, 0, 255});
     // 修改：如果找到角点，进行亚像素级精确化
-    if (success) {
+    if (success)
+    {
       cv::Mat gray;
       cv::cvtColor(img, gray, cv::COLOR_BGR2GRAY);
       cv::TermCriteria criteria(cv::TermCriteria::EPS + cv::TermCriteria::MAX_ITER, 30, 0.001);
@@ -76,7 +75,6 @@ void capture_loop(
       // 修改：显示棋盘格角点识别结果
       cv::drawChessboardCorners(img_with_ypr, pattern_size, cv::Mat(corners_2d), success);
     }
-    
 
     cv::resize(img_with_ypr, img_with_ypr, {}, 0.5, 0.5);  // 显示时缩小图片尺寸
 
@@ -104,7 +102,8 @@ int main(int argc, char * argv[])
 {
   // 读取命令行参数
   cv::CommandLineParser cli(argc, argv, keys);
-  if (cli.has("help")) {
+  if (cli.has("help"))
+  {
     cli.printMessage();
     return 0;
   }
@@ -114,10 +113,8 @@ int main(int argc, char * argv[])
   // 新建输出文件夹
   std::filesystem::create_directory(output_folder);
 
-
-
   tools::logger()->info("按 's' 保存图片和IMU数据，按 'q' 退出");
-  
+
   // 主循环，保存图片和对应四元数
   capture_loop(config_path, "can0", output_folder);
 
@@ -125,21 +122,6 @@ int main(int argc, char * argv[])
 
   return 0;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // #include <fmt/core.h>
 

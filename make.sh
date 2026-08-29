@@ -8,7 +8,10 @@
 set -e
 
 # Step 1: generate the build system inside the build/ directory.
-cmake -B build
+# CMAKE_EXPORT_COMPILE_COMMANDS also writes build/compile_commands.json, which is
+# what clangd reads to get each file's real include paths and defines. Without it
+# the editor falls back to guessed flags and reports spurious errors.
+cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
 # Step 2: compile, using one parallel job per CPU core of this machine.
 make -C build/ -j$(nproc)

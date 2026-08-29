@@ -11,22 +11,19 @@ const std::string keys =
   "{config-path c  | ../configs/calibration.yaml | yaml配置文件路径 }"
   "{@input-folder  | ../assets/img_with_q        | 输入文件夹路径   }";
 
-  
 // 修改：生成棋盘格角点的三维坐标
 std::vector<cv::Point3f> chessboard_3d(const cv::Size & pattern_size, const float square_size)
 {
   std::vector<cv::Point3f> corners_3d;
 
   for (int i = 0; i < pattern_size.height; i++)
-    for (int j = 0; j < pattern_size.width; j++)
-      corners_3d.push_back({j * square_size, i * square_size, 0});
+    for (int j = 0; j < pattern_size.width; j++) corners_3d.push_back({j * square_size, i * square_size, 0});
 
   return corners_3d;
 }
 
 void load(
-  const std::string & input_folder, const std::string & config_path, cv::Size & img_size,
-  std::vector<std::vector<cv::Point3f>> & obj_points,
+  const std::string & input_folder, const std::string & config_path, cv::Size & img_size, std::vector<std::vector<cv::Point3f>> & obj_points,
   std::vector<std::vector<cv::Point2f>> & img_points)
 {
   // 读取yaml参数
@@ -36,7 +33,8 @@ void load(
   auto square_size_mm = yaml["square_size_mm"].as<double>();  // 修改：棋盘格方块大小
   cv::Size pattern_size(pattern_cols, pattern_rows);
 
-  for (int i = 1; true; i++) {
+  for (int i = 1; true; i++)
+  {
     // 读取图片
     auto img_path = fmt::format("{}/{}.jpg", input_folder, i);
     auto img = cv::imread(img_path);
@@ -48,9 +46,10 @@ void load(
     // 修改：识别棋盘格角点
     std::vector<cv::Point2f> corners_2d;
     bool success = cv::findChessboardCorners(img, pattern_size, corners_2d);
-    
+
     // 修改：如果找到角点，进行亚像素级精确化
-    if (success) {
+    if (success)
+    {
       cv::Mat gray;
       cv::cvtColor(img, gray, cv::COLOR_BGR2GRAY);
       cv::TermCriteria criteria(cv::TermCriteria::EPS + cv::TermCriteria::MAX_ITER, 30, 0.001);
@@ -77,10 +76,8 @@ void load(
 void print_yaml(const cv::Mat & camera_matrix, const cv::Mat & distort_coeffs, double error)
 {
   YAML::Emitter result;
-  std::vector<double> camera_matrix_data(
-    camera_matrix.begin<double>(), camera_matrix.end<double>());
-  std::vector<double> distort_coeffs_data(
-    distort_coeffs.begin<double>(), distort_coeffs.end<double>());
+  std::vector<double> camera_matrix_data(camera_matrix.begin<double>(), camera_matrix.end<double>());
+  std::vector<double> distort_coeffs_data(distort_coeffs.begin<double>(), distort_coeffs.end<double>());
 
   result << YAML::BeginMap;
   result << YAML::Comment(fmt::format("重投影误差: {:.4f}px", error));
@@ -98,7 +95,8 @@ int main(int argc, char * argv[])
 {
   // 读取命令行参数
   cv::CommandLineParser cli(argc, argv, keys);
-  if (cli.has("help")) {
+  if (cli.has("help"))
+  {
     cli.printMessage();
     return 0;
   }
@@ -114,58 +112,32 @@ int main(int argc, char * argv[])
   // 相机标定
   cv::Mat camera_matrix, distort_coeffs;
   std::vector<cv::Mat> rvecs, tvecs;
-  auto criteria = cv::TermCriteria(
-    cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 100,
-    DBL_EPSILON);
-  
+  auto criteria = cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 100, DBL_EPSILON);
+
   // 修改：使用棋盘格标定的默认标志
   int flags = 0;
   // 可以添加其他标志，如：
   // flags |= cv::CALIB_FIX_K3; // 固定k3畸变系数
   // flags |= cv::CALIB_ZERO_TANGENT_DIST; // 设置切向畸变系数为0
-  
-  cv::calibrateCamera(
-    obj_points, img_points, img_size, camera_matrix, distort_coeffs, rvecs, tvecs,
-    flags, criteria);
+
+  cv::calibrateCamera(obj_points, img_points, img_size, camera_matrix, distort_coeffs, rvecs, tvecs, flags, criteria);
 
   // 重投影误差
   double error_sum = 0;
   size_t total_points = 0;
-  for (size_t i = 0; i < obj_points.size(); i++) {
+  for (size_t i = 0; i < obj_points.size(); i++)
+  {
     std::vector<cv::Point2f> reprojected_points;
-    cv::projectPoints(
-      obj_points[i], rvecs[i], tvecs[i], camera_matrix, distort_coeffs, reprojected_points);
+    cv::projectPoints(obj_points[i], rvecs[i], tvecs[i], camera_matrix, distort_coeffs, reprojected_points);
 
     total_points += reprojected_points.size();
-    for (size_t j = 0; j < reprojected_points.size(); j++)
-      error_sum += cv::norm(img_points[i][j] - reprojected_points[j]);
+    for (size_t j = 0; j < reprojected_points.size(); j++) error_sum += cv::norm(img_points[i][j] - reprojected_points[j]);
   }
   auto error = error_sum / total_points;
 
   // 输出yaml
   print_yaml(camera_matrix, distort_coeffs, error);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // #include <fmt/core.h>
 // #include <yaml-cpp/yaml.h>

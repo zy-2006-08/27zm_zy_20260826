@@ -3,13 +3,13 @@
 
 namespace tools
 {
-class Exiter
-{
-public:
-  Exiter();
+  class Exiter
+  {
+    public:
+    Exiter();
 
-  bool exit() const;
-};
+    bool exit() const;
+  };
 
 }  // namespace tools
 

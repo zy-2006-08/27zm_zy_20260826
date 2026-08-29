@@ -5,23 +5,22 @@
 #include <fstream>
 #include <opencv2/core/eigen.hpp>
 #include <opencv2/opencv.hpp>
-   
-#include "tools/img_tools.hpp" 
+
+#include "tools/img_tools.hpp"
 #include "tools/math_tools.hpp"
- 
+
 const std::string keys =
   "{help h usage ? |                          | 输出命令行参数说明}"
   "{config-path c  | ../configs/calibration.yaml | yaml配置文件路径 }"
   "{@input-folder  | ../assets/img_with_q        | 输入文件夹路径   }";
-               
+
 // 修改：生成棋盘格角点的三维坐标
 std::vector<cv::Point3f> chessboard_3d(const cv::Size & pattern_size, const float square_size)
 {
   std::vector<cv::Point3f> corners_3d;
 
   for (int i = 0; i < pattern_size.height; i++)
-    for (int j = 0; j < pattern_size.width; j++)
-      corners_3d.push_back({j * square_size, i * square_size, 0});
+    for (int j = 0; j < pattern_size.width; j++) corners_3d.push_back({j * square_size, i * square_size, 0});
 
   return corners_3d;
 }
@@ -35,10 +34,8 @@ Eigen::Quaterniond read_q(const std::string & q_path)
 }
 
 void load(
-  const std::string & input_folder, const std::string & config_path,
-  std::vector<double> & R_gimbal2imubody_data, std::vector<cv::Mat> & R_gimbal2world_list,
-  std::vector<cv::Mat> & t_gimbal2world_list, std::vector<cv::Mat> & rvecs,
-  std::vector<cv::Mat> & tvecs)
+  const std::string & input_folder, const std::string & config_path, std::vector<double> & R_gimbal2imubody_data, std::vector<cv::Mat> & R_gimbal2world_list,
+  std::vector<cv::Mat> & t_gimbal2world_list, std::vector<cv::Mat> & rvecs, std::vector<cv::Mat> & tvecs)
 {
   // 读取yaml参数
   auto yaml = YAML::LoadFile(config_path);
@@ -54,7 +51,8 @@ void load(
   cv::Matx33d camera_matrix(camera_matrix_data.data());
   cv::Mat distort_coeffs(distort_coeffs_data);
 
-  for (int i = 1; true; i++) {
+  for (int i = 1; true; i++)
+  {
     // 读取图片和对应四元数
     auto img_path = fmt::format("{}/{}.jpg", input_folder, i);
     auto q_path = fmt::format("{}/{}.txt", input_folder, i);
@@ -64,8 +62,7 @@ void load(
 
     // 计算云台的欧拉角
     Eigen::Matrix3d R_imubody2imuabs = q.toRotationMatrix();
-    Eigen::Matrix3d R_gimbal2world =
-      R_gimbal2imubody.transpose() * R_imubody2imuabs * R_gimbal2imubody;
+    Eigen::Matrix3d R_gimbal2world = R_gimbal2imubody.transpose() * R_imubody2imuabs * R_gimbal2imubody;
     Eigen::Vector3d ypr = tools::eulers(R_gimbal2world, 2, 1, 0) * 57.3;  // degree
 
     // 在图片上显示云台的欧拉角，用来检验R_gimbal2imubody是否正确
@@ -77,9 +74,10 @@ void load(
     // 修改：识别棋盘格角点
     std::vector<cv::Point2f> corners_2d;
     bool success = cv::findChessboardCorners(img, pattern_size, corners_2d);
-    
+
     // 修改：如果找到角点，进行亚像素级精确化
-    if (success) {
+    if (success)
+    {
       cv::Mat gray;
       cv::cvtColor(img, gray, cv::COLOR_BGR2GRAY);
       cv::TermCriteria criteria(cv::TermCriteria::EPS + cv::TermCriteria::MAX_ITER, 30, 0.001);
@@ -102,8 +100,7 @@ void load(
     cv::eigen2cv(R_gimbal2world, R_gimbal2world_cv);
     cv::Mat rvec, tvec;
     auto corners_3d_ = chessboard_3d(pattern_size, square_size_mm);
-    cv::solvePnP(
-      corners_3d_, corners_2d, camera_matrix, distort_coeffs, rvec, tvec, false, cv::SOLVEPNP_ITERATIVE);
+    cv::solvePnP(corners_3d_, corners_2d, camera_matrix, distort_coeffs, rvec, tvec, false, cv::SOLVEPNP_ITERATIVE);
 
     // 记录所需的数据
     R_gimbal2world_list.emplace_back(R_gimbal2world_cv);
@@ -114,22 +111,18 @@ void load(
 }
 
 void print_yaml(
-  const std::vector<double> & R_gimbal2imubody_data, const cv::Mat & R_camera2gimbal,
-  const cv::Mat & t_camera2gimbal, const Eigen::Vector3d & ypr)
+  const std::vector<double> & R_gimbal2imubody_data, const cv::Mat & R_camera2gimbal, const cv::Mat & t_camera2gimbal, const Eigen::Vector3d & ypr)
 {
   YAML::Emitter result;
-  std::vector<double> R_camera2gimbal_data(
-    R_camera2gimbal.begin<double>(), R_camera2gimbal.end<double>());
-  std::vector<double> t_camera2gimbal_data(
-    t_camera2gimbal.begin<double>(), t_camera2gimbal.end<double>());
+  std::vector<double> R_camera2gimbal_data(R_camera2gimbal.begin<double>(), R_camera2gimbal.end<double>());
+  std::vector<double> t_camera2gimbal_data(t_camera2gimbal.begin<double>(), t_camera2gimbal.end<double>());
 
   result << YAML::BeginMap;
   result << YAML::Key << "R_gimbal2imubody";
   result << YAML::Value << YAML::Flow << R_gimbal2imubody_data;
   result << YAML::Newline;
   result << YAML::Newline;
-  result << YAML::Comment(fmt::format(
-    "相机同理想情况的偏角: yaw{:.2f} pitch{:.2f} roll{:.2f} degree", ypr[0], ypr[1], ypr[2]));
+  result << YAML::Comment(fmt::format("相机同理想情况的偏角: yaw{:.2f} pitch{:.2f} roll{:.2f} degree", ypr[0], ypr[1], ypr[2]));
   result << YAML::Key << "R_camera2gimbal";
   result << YAML::Value << YAML::Flow << R_camera2gimbal_data;
   result << YAML::Key << "t_camera2gimbal";
@@ -144,7 +137,8 @@ int main(int argc, char * argv[])
 {
   // 读取命令行参数
   cv::CommandLineParser cli(argc, argv, keys);
-  if (cli.has("help")) {
+  if (cli.has("help"))
+  {
     cli.printMessage();
     return 0;
   }
@@ -155,14 +149,11 @@ int main(int argc, char * argv[])
   std::vector<double> R_gimbal2imubody_data;
   std::vector<cv::Mat> R_gimbal2world_list, t_gimbal2world_list;
   std::vector<cv::Mat> rvecs, tvecs;
-  load(
-    input_folder, config_path, R_gimbal2imubody_data, R_gimbal2world_list, t_gimbal2world_list,
-    rvecs, tvecs);
+  load(input_folder, config_path, R_gimbal2imubody_data, R_gimbal2world_list, t_gimbal2world_list, rvecs, tvecs);
 
   // 手眼标定
   cv::Mat R_camera2gimbal, t_camera2gimbal;
-  cv::calibrateHandEye(
-    R_gimbal2world_list, t_gimbal2world_list, rvecs, tvecs, R_camera2gimbal, t_camera2gimbal);
+  cv::calibrateHandEye(R_gimbal2world_list, t_gimbal2world_list, rvecs, tvecs, R_camera2gimbal, t_camera2gimbal);
   t_camera2gimbal /= 1e3;  // mm to m
 
   // 计算相机同理想情况的偏角
@@ -175,12 +166,6 @@ int main(int argc, char * argv[])
   // 输出yaml
   print_yaml(R_gimbal2imubody_data, R_camera2gimbal, t_camera2gimbal, ypr);
 }
-
-
-
-
-
-
 
 // #include <fmt/core.h>
 // #include <yaml-cpp/yaml.h>

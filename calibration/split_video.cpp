@@ -23,7 +23,8 @@ int main(int argc, char * argv[])
 {
   // 读取命令行参数
   cv::CommandLineParser cli(argc, argv, keys);
-  if (cli.has("help")) {
+  if (cli.has("help"))
+  {
     cli.printMessage();
     return 0;
   }
@@ -44,7 +45,8 @@ int main(int argc, char * argv[])
 
   // 设置视频起始帧
   video.set(cv::CAP_PROP_POS_FRAMES, start_index);
-  for (int i = 0; i < start_index; i++) {
+  for (int i = 0; i < start_index; i++)
+  {
     double t, w, x, y, z;
     text >> t >> w >> x >> y >> z;
   }
@@ -64,7 +66,8 @@ int main(int argc, char * argv[])
   cv::Mat img;
 
   // 循环处理视频帧
-  for (int frame_count = start_index; !exiter.exit(); frame_count++) {
+  for (int frame_count = start_index; !exiter.exit(); frame_count++)
+  {
     if (end_index > 0 && frame_count > end_index) break;
 
     video.read(img);

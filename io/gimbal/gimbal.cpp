@@ -57,22 +57,22 @@ namespace io
     return state_;
   }
 
-  std::string Gimbal::str(GimbalMode mode) const
-  {
-    switch (mode)
-    {
-      case GimbalMode::IDLE:
-        return "IDLE";
-      case GimbalMode::AUTO_AIM:
-        return "AUTO_AIM";
-      case GimbalMode::SMALL_BUFF:
-        return "SMALL_BUFF";
-      case GimbalMode::BIG_BUFF:
-        return "BIG_BUFF";
-      default:
-        return "INVALID";
-    }
-  }
+  // std::string Gimbal::str(GimbalMode mode) const
+  // {
+  //   switch (mode)
+  //   {
+  //     case GimbalMode::IDLE:
+  //       return "IDLE";
+  //     case GimbalMode::AUTO_AIM:
+  //       return "AUTO_AIM";
+  //     case GimbalMode::SMALL_BUFF:
+  //       return "SMALL_BUFF";
+  //     case GimbalMode::BIG_BUFF:
+  //       return "BIG_BUFF";
+  //     default:
+  //       return "INVALID";
+  //   }
+  // }
 
   Eigen::Quaterniond Gimbal::q(std::chrono::steady_clock::time_point t)
   {

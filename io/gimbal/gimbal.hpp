@@ -16,20 +16,6 @@
 namespace io
 {
 
-  // enum class WorkMode : uint8_t
-  // {
-  //   IDLE = 0,             // 空闲
-  //   AUTO_AIM = 1,         // 自瞄模式
-  //   OMNI_PERCEPTION = 2,  // 全向感知模式
-  // };
-
-  // ============================ 接收包：C 板 -> 视觉 ============================
-  // 方向：下位机（电控 C 板）发，本程序收。收包逻辑见 gimbal.cpp:244 read_thread()。
-  // __attribute__((packed)) 关闭结构体对齐填充，让内存布局和串口字节流一一对应，
-  // 于是可以直接 read() 进结构体再按字段取用（gimbal.cpp:260），不用手工拆字节。
-  // 电控侧对应概念：就是你在 C 板那边定义的同一个包，两边字段顺序必须逐字节对齐，
-  // 少一个字段或换个顺序，收到的就是一堆乱码。
-  // sizeof = 37 字节。字节偏移是按 packed 布局实测的，改字段顺序会让下面所有偏移作废。
   struct __attribute__((packed)) GimbalToVision
   {
     uint8_t head[2] = {0x5a, 0x53};  // 偏移 0，2字节：帧头。收包时校验，不对就 flushInput 重新同步（gimbal.cpp:267）
@@ -51,50 +37,6 @@ namespace io
 
   static_assert(sizeof(GimbalToVision) <= 64);
 
-  // ============================ 发送包 A：视觉 -> C 板（本仓库当前未使用）============================
-  // 方向：本程序发，下位机收。填包+写串口见 gimbal.cpp:160 Gimbal::send()。
-  // sizeof = 29 字节。
-  //
-  // 注意：本仓库上场跑的是下面的 sb_VisionToGimbal，不是这个。
-  // 全仓库只有 src/rb_auto_aim_debug.cpp:90 和 :293 两个发送点，调的都是 sb_send()。
-  //
-  // 【三处疑似问题，都在发送侧，读代码时要能自己判断出来】
-  // 1. crc16 声明了但从未被赋值：本结构体唯一的 get_crc16 调用在 gimbal.cpp:221-222，
-  //    整段被注释掉了。也就是说这个包发出去时 crc16 是未初始化的随机值。
-  //    对比接收侧 gimbal.cpp:282 是真校验的——校验只有单向做了。
-  // 2. gimbal.cpp:148 和 :171 各有一条 `reinterpret_cast<uint8_t *>(&tx_data_), sizeof(tx_data_);`
-  //    这是两条遗留的空语句（逗号表达式，算完就丢），大概是删 crc16 计算时留下的残骸。
-  // 3. 下面的 sb_VisionToGimbal（实际在用的那个）连 crc16 字段都没有。
-  //
-  // 为什么不在这里动手改：改它要电控侧固件配合，两边校验算法和包长必须同时改，
-  // 离线（没车没 C 板）做不了闭环验证，改了只能是"看起来对"。
-  // struct __attribute__((packed)) VisionToGimbal
-  // {
-  //   uint8_t head = {0x66};  // 偏移 0，1字节：帧头
-  //   uint8_t mode = 0;       // 偏移 1，1字节：0: 不控制, 1: 控制云台但不开火，2:控制云台开火
-  //                           //              由 send() 的 control/fire 两个 bool 拼出，见 gimbal.cpp:164
-  //   float yaw = 0;          // 偏移 2，4字节：目标 yaw 绝对角，单位弧度（世界系，非增量）
-  //   float yaw_vel = 0;      // 偏移 6，4字节：yaw 角速度前馈，单位 rad/s
-  //   float yaw_acc = 0;      // 偏移 10，4字节：yaw 角加速度前馈，单位 rad/s^2
-  //   float pitch = 0;        // 偏移 14，4字节：目标 pitch 绝对角，单位弧度
-  //   float pitch_vel = 0;    // 偏移 18，4字节：pitch 角速度前馈，单位 rad/s
-  //   float pitch_acc = 0;    // 偏移 22，4字节：pitch 角加速度前馈，单位 rad/s^2
-  //                           //              带速度/加速度是为了让电控侧做前馈跟随，不是只给个位置让它自己追
-  //   uint16_t crc16;         // 偏移 26，2字节：见上方第 1 条——从未被计算
-  //   uint8_t end = {0x11};   // 偏移 28，1字节：帧尾
-  // };
-
-  // ============================ 发送包 B：视觉 -> C 板（★实际在用的就是这个）============================
-  // 方向：本程序发，下位机收。填包+写串口见 gimbal.cpp:183 Gimbal::sb_send()。
-  // sizeof = 36 字节。
-  //
-  // 与上面 VisionToGimbal 的差别：前 26 字节完全一样，之后把 crc16 换成了
-  // target_x / target_y / target_name（多发一份目标信息给电控/雷达侧用）。
-  // 也就是说这个包**没有任何校验字段**，只靠 head(0x66) + end(0x11) 兜着。
-  //
-  // 上场路径：Planner(MPC) 产出 auto_aim::Plan -> rb_auto_aim_debug.cpp:90 -> sb_send()。
-  // 注意 Plan 里的 yaw/pitch 是弧度：rb_auto_aim_debug.cpp:293 那个收尾调用就明确
-  // 把 state 的角度值 /57.3 转回弧度再发，可以对照着确认单位。
   struct __attribute__((packed)) sb_VisionToGimbal
   {
     uint8_t head = {0x66};    // 偏移 0，1字节：帧头
@@ -124,13 +66,6 @@ namespace io
     LONG_FOCAL_LENGTH  //长焦
   };
 
-  // ============================ 云台状态：给算法层用的"已解析"形式 ============================
-  // 这不是通信包，是 GimbalToVision 收进来后解析、换算好的内部状态，供上层 state() 取用。
-  // 填写位置见 gimbal.cpp:308-317。上层通过 Gimbal::state() 拿到它的快照（加了 mutex）。
-  //
-  // 单位陷阱（本仓库最容易踩的一个）：这里的 yaw/pitch 是**角度**，
-  // 因为 gimbal.cpp:310-311 乘了 57.3（弧度->度）。而发送包里的 yaw/pitch 是**弧度**。
-  // 所以 rb_auto_aim_debug.cpp:293 回填时要 /57.3 转回去。算法内部一律用弧度。
   struct GimbalState
   {
     float yaw;              // 云台 yaw，单位【度】（gimbal.cpp:310 已乘 57.3）
@@ -153,42 +88,28 @@ namespace io
   {
     public:
     Gimbal(const std::string & config_path);
-
     ~Gimbal();
-
     GimbalMode mode() const;
     GimbalState state() const;
-    std::string str(GimbalMode mode) const;
+    // std::string str(GimbalMode mode) const;
     Eigen::Quaterniond q(std::chrono::steady_clock::time_point t);
-
     void send(bool control, bool fire, float yaw, float yaw_vel, float yaw_acc, float pitch, float pitch_vel, float pitch_acc);
-
     void sb_send(
     bool control, bool fire, float yaw, float yaw_vel, float yaw_acc, float pitch, float pitch_vel, float pitch_acc, float target_x, float target_y,uint8_t target_name);
-
-    // void send(io::VisionToGimbal VisionToGimbal);
-
     void sb_send(io::sb_VisionToGimbal VisionToGimbal);
-
     GimbalState * set_state_() { return &state_; }
 
     private:
     serial::Serial serial_;
-
     std::thread thread_;
     std::atomic<bool> quit_ = false;
     mutable std::mutex mutex_;
-
     GimbalToVision rx_data_;
-    // VisionToGimbal tx_data_;
     sb_VisionToGimbal sb_tx_data_;
-
     GimbalMode mode_ = GimbalMode::IDLE;
     GimbalState state_;
     tools::ThreadSafeQueue<std::tuple<Eigen::Quaterniond, std::chrono::steady_clock::time_point>> queue_{1000};
-
     int gimbal_yaw2vision, gimbal_pitch2vision, gimbal_roll2vision;
-
     bool read(uint8_t * buffer, size_t size);
     void read_thread();
     void reconnect();

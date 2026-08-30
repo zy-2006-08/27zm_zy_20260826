@@ -122,7 +122,7 @@ namespace auto_aim
       cv::minMaxLoc(color_scores, NULL, &score_color, NULL, &color_id);
       _class_id = class_id.x;
       _color_id = color_id.x;
-
+ 
       armor_key_points.push_back(cv::Point2f(output.at<float>(r, 0) / scale, output.at<float>(r, 1) / scale));
       armor_key_points.push_back(cv::Point2f(output.at<float>(r, 6) / scale, output.at<float>(r, 7) / scale));
       armor_key_points.push_back(cv::Point2f(output.at<float>(r, 4) / scale, output.at<float>(r, 5) / scale));
@@ -244,7 +244,7 @@ namespace auto_aim
   void YOLOV5::save(const Armor & armor) const
   {
     auto file_name = fmt::format("{:%Y-%m-%d_%H-%M-%S}", std::chrono::system_clock::now());
-    auto img_path = fmt::format("{}/{}_{}.jpg", save_path_, armor.name, file_name);
+    auto img_path = fmt::format("{}/{}_{}.jpg", save_path_, ARMOR_NAMES[armor.name], file_name);
     cv::imwrite(img_path, tmp_img_);
   }
 

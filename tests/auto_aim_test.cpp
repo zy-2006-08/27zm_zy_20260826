@@ -89,14 +89,14 @@ int main(int argc, char * argv[])
     // solver 拿它建立 gimbal->world 的旋转，后面 detect 里算世界坐标要用。
     // 所以顺序不能反：必须先 set 姿态，再 detect。
     // 入：四元数 (w,x,y,z)；出：无（存进 solver 内部状态）
-    solver.set_R_gimbal2world({w, x, y, z});
+    solver.set_R_gimbal2world({w, x, y, z});                              //四元数
 
     // 【第 2 步】识别：一张图 -> 若干装甲板。
     // 本离线程序走 YOLO（神经网络）。下面两行注释掉的是传统CV 的走法——
     // 而上场主程序 src/rb_auto_aim_debug.cpp 恰恰用的是传统CV，YOLO 在那边只构造不调用。
     // 也就是说：在这里调好的识别参数，不一定是车上跑的那条路。
     // 入：cv::Mat + 帧号；出：std::list<auto_aim::Armor>（已含世界坐标，见 armor.hpp）
-    auto yolo_start = std::chrono::steady_clock::now();
+    auto yolo_start = std::chrono::steady_clock::now();              //神经网络框出装甲板
     auto armors = yolo.detect(img, frame_count);
     // auto traditional_start = std::chrono::steady_clock::now();
     // auto armors = traditional.detect(img, frame_count);
@@ -132,7 +132,7 @@ int main(int argc, char * argv[])
 
     Eigen::Quaternion gimbal_q = {w, x, y, z};
     tools::draw_text(img, fmt::format("gimbal yaw{:.2f}", (tools::eulers(gimbal_q.toRotationMatrix(), 2, 1, 0) * 57.3)[0]), {10, 90}, {255, 255, 255});
-
+    // tools::draw_text(img, fmt::format("state: {} armors:{}", tracker.state(), armors.size()), {10, 120}, {0, 255, 255});
     // ===== 曲线输出：这一整段是学 EKF 最重要的工具，不是可选的调试装饰 =====
     // 下面往 data 里塞的每个 key，都会被 tools::Plotter 打成 JSON、用 UDP 发到 127.0.0.1:9870。
     // 接收端是 PlotJuggler（sudo apt install plotjuggler），打开后选 UDP Server / 端口 9870 /

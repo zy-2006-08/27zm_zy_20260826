@@ -3,6 +3,9 @@
 # ---------------------------------------------------------------------------
 build/
 
+# Mac native build output (created by mac/build.sh)
+build-mac/
+
 # ---------------------------------------------------------------------------
 # Runtime-generated directories and files.
 # These do NOT exist in a fresh clone; the programs create them while running.
@@ -35,6 +38,10 @@ MvSdkLog/
 # ---------------------------------------------------------------------------
 .omo/
 .codegraph/
+
+# Python venv for tools/plot_viewer.py (matplotlib, ~120MB). Recreate with:
+#   python3 -m venv .venv-plot && .venv-plot/bin/pip install matplotlib
+.venv-plot/
 
 # ---------------------------------------------------------------------------
 # Editor and OS noise

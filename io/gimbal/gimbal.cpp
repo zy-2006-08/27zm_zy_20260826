@@ -9,6 +9,7 @@
 
 namespace io
 {
+  //                构造函数初始化
   Gimbal::Gimbal(const std::string & config_path)
   {
     auto yaml = tools::load(config_path);
@@ -31,7 +32,7 @@ namespace io
       tools::logger()->error("[Gimbal] Failed to open serial: {}", e.what());
       exit(1);
     }
-
+//           再开一个人手去跑这个函数 读串口数据
     thread_ = std::thread(&Gimbal::read_thread, this);
 
     queue_.pop();
@@ -56,24 +57,6 @@ namespace io
     std::lock_guard<std::mutex> lock(mutex_);
     return state_;
   }
-
-  // std::string Gimbal::str(GimbalMode mode) const
-  // {
-  //   switch (mode)
-  //   {
-  //     case GimbalMode::IDLE:
-  //       return "IDLE";
-  //     case GimbalMode::AUTO_AIM:
-  //       return "AUTO_AIM";
-  //     case GimbalMode::SMALL_BUFF:
-  //       return "SMALL_BUFF";
-  //     case GimbalMode::BIG_BUFF:
-  //       return "BIG_BUFF";
-  //     default:
-  //       return "INVALID";
-  //   }
-  // }
-
   Eigen::Quaterniond Gimbal::q(std::chrono::steady_clock::time_point t)
   {
     while (true)
@@ -111,75 +94,9 @@ namespace io
       return q_c;
     }
   }
+//                     发送函数             
 
-  void Gimbal::sb_send(io::sb_VisionToGimbal VisionToGimbal)
-  {
-    sb_tx_data_.mode = VisionToGimbal.mode;
-    sb_tx_data_.yaw = VisionToGimbal.yaw;
-    sb_tx_data_.yaw_vel = VisionToGimbal.yaw_vel;
-    sb_tx_data_.yaw_acc = VisionToGimbal.yaw_acc;
-    sb_tx_data_.pitch = VisionToGimbal.pitch;
-    sb_tx_data_.pitch_vel = VisionToGimbal.pitch_vel;
-    sb_tx_data_.pitch_acc = VisionToGimbal.pitch_acc;
-    sb_tx_data_.target_x = VisionToGimbal.target_x;
-    sb_tx_data_.target_y = VisionToGimbal.target_y;
-    sb_tx_data_.target_name = VisionToGimbal.target_name;
-
-    try
-    {
-      // 2. 这里的底层缓冲必须是 sb_tx_data_，不能是 tx_data_ ！
-      serial_.write(reinterpret_cast<uint8_t *>(&sb_tx_data_), sizeof(sb_tx_data_));
-    }
-    catch (const std::exception & e)
-    {
-      tools::logger()->warn("[Gimbal] Failed to write serial: {}", e.what());
-    }
-  }
-
-  // void Gimbal::send(io::VisionToGimbal VisionToGimbal)
-  // {
-  //   tx_data_.mode = VisionToGimbal.mode;
-  //   tx_data_.yaw = VisionToGimbal.yaw;
-  //   tx_data_.yaw_vel = VisionToGimbal.yaw_vel;
-  //   tx_data_.yaw_acc = VisionToGimbal.yaw_acc;
-  //   tx_data_.pitch = VisionToGimbal.pitch;
-  //   tx_data_.pitch_vel = VisionToGimbal.pitch_vel;
-  //   tx_data_.pitch_acc = VisionToGimbal.pitch_acc;
-  //   reinterpret_cast<uint8_t *>(&tx_data_), sizeof(tx_data_);
-
-  //   try
-  //   {
-  //     serial_.write(reinterpret_cast<uint8_t *>(&tx_data_), sizeof(tx_data_));
-  //   }
-  //   catch (const std::exception & e)
-  //   {
-  //     tools::logger()->warn("[Gimbal] Failed to write serial: {}", e.what());
-  //   }
-  // }
-
-  // void Gimbal::send(bool control, bool fire, float yaw, float yaw_vel, float yaw_acc, float pitch, float pitch_vel, float pitch_acc)
-  // {
-  //   tx_data_.mode = control ? (fire ? 2 : 1) : 0;
-  //   tx_data_.yaw = yaw;
-  //   tx_data_.yaw_vel = yaw_vel;
-  //   tx_data_.yaw_acc = yaw_acc;
-  //   tx_data_.pitch = pitch;
-  //   tx_data_.pitch_vel = pitch_vel;
-  //   tx_data_.pitch_acc = pitch_acc;
-  //   reinterpret_cast<uint8_t *>(&tx_data_), sizeof(tx_data_);
-
-  //   try
-  //   {
-  //     serial_.write(reinterpret_cast<uint8_t *>(&tx_data_), sizeof(tx_data_));
-  //   }
-  //   catch (const std::exception & e)
-  //   {
-  //     tools::logger()->warn("[Gimbal] Failed to write serial: {}", e.what());
-  //   }
-  // }
-
-  void Gimbal::sb_send(
-    bool control, bool fire, float yaw, float yaw_vel, float yaw_acc, float pitch, float pitch_vel, float pitch_acc, float target_x, float target_y,
+  void Gimbal::sb_send(bool control, bool fire, float yaw, float yaw_vel, float yaw_acc, float pitch, float pitch_vel, float pitch_acc, float target_x, float target_y,
     uint8_t target_name)
   {
     sb_tx_data_.mode = control ? (fire ? 2 : 1) : 0;
@@ -202,30 +119,7 @@ namespace io
       tools::logger()->warn("[Gimbal] Failed to write serial: {}", e.what());
     }
   }
-
-  // void Gimbal::sb_send(
-  //   bool control, WorkMode work_mode, bool fire, float yaw, float yaw_vel, float yaw_acc, float pitch, float pitch_vel,
-  //   float pitch_acc)
-  // {
-  //   tx_data_.mode = control ? (fire ? 2 : 1) : 0;
-  //   tx_data_.work_mode = static_cast<uint8_t>(work_mode);
-  //   tx_data_.yaw = yaw;
-  //   tx_data_.yaw_vel = yaw_vel;
-  //   tx_data_.yaw_acc = yaw_acc;
-  //   tx_data_.pitch = pitch;
-  //   tx_data_.pitch_vel = pitch_vel;
-  //   tx_data_.pitch_acc = pitch_acc;
-  //       reinterpret_cast<uint8_t *>(&tx_data_), sizeof(tx_data_) ;
-  //   tx_data_.crc16 = tools::get_crc16(
-  //     reinterpret_cast<uint8_t *>(&tx_data_), sizeof(tx_data_) - sizeof(tx_data_.crc16));
-
-  //   try {
-  //     serial_.write(reinterpret_cast<uint8_t *>(&tx_data_), sizeof(tx_data_));
-  //   } catch (const std::exception & e) {
-  //     tools::logger()->warn("[Gimbal] Failed to write serial: {}", e.what());
-  //   }
-  // }
-
+//                     接收电控字节包
   bool Gimbal::read(uint8_t * buffer, size_t size)
   {
     try
@@ -238,7 +132,7 @@ namespace io
       return false;
     }
   }
-
+//                    独立线程，一直接收电控发来的数据
   void Gimbal::read_thread()
   {
     tools::logger()->info("[Gimbal] read_thread started.");
@@ -305,10 +199,10 @@ namespace io
 
       std::lock_guard<std::mutex> lock(mutex_);
       auto ypr_now = tools::eulers(q, 2, 1, 0);
-      state_.yaw = ypr_now[0] * 57.3;
+      state_.yaw = ypr_now[0] * 57.3;      //解算出的度数
       state_.pitch = ypr_now[1] * 57.3;
 
-      // state_.mode = 1;
+      // 收到模，颜色，弹速
       state_.mode = rx_data_.mode;
       state_.enemy_color = !rx_data_.color;
       state_.bullet_speed = rx_data_.bullet_speed;
@@ -342,7 +236,7 @@ namespace io
 
     tools::logger()->info("[Gimbal] read_thread stopped.");
   }
-
+// 重连
   void Gimbal::reconnect()
   {
     int max_retry_count = 10;

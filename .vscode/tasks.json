@@ -19,6 +19,15 @@
     //   视觉 flash = 直接运行 auto_aim_test（程序在电脑上跑，没有烧录这一步）
     //
     // 另外也保留了语义更准的别名 run / build and run，从任务列表里选时更好认。
+    //
+    // ⚠️ 本文件里的任务走的是 Mac 原生编译（mac/build.sh -> build-mac/），
+    //    不是小电脑上的 cmake + build/。两者的区别：
+    //      mac/build.sh   Apple Silicon 原生，yolo 约 5.5ms/帧，窗口直接弹出。
+    //                     只编「识别→跟踪→火控」这条离线链，不含相机/CAN/MPC。
+    //      make.sh        小电脑（Ubuntu）上的完整构建，含上场程序。
+    //                     Mac 上跑不了，OpenVINO 的相机 SDK 都是 Linux 的。
+    //    如果你在小电脑上打开本工程，把下面的 cwd 从 build-mac 改回 build、
+    //    command 改回 make -C build 即可。
     "version": "2.0.0",
 
     // 自定义 gcc 报错匹配规则。
@@ -58,7 +67,7 @@
             // 新增/删除源文件或改了 CMakeLists.txt 时用 rebuild。
             "label": "build",
             "type": "shell",
-            "command": "make -C build -j$(nproc)",
+            "command": "./mac/build.sh",
             "options": {
                 "cwd": "${workspaceFolder}"
             },
@@ -84,9 +93,9 @@
             // 在别的目录跑会找不到配置文件然后直接 exit(1)。
             "label": "flash",
             "type": "shell",
-            "command": "./auto_aim_test",
+            "command": "./auto_aim_test -c=../configs/demo.yaml ../assets/demo/demo",
             "options": {
-                "cwd": "${workspaceFolder}/build"
+                "cwd": "${workspaceFolder}/build-mac"
             },
             "problemMatcher": [],
             "presentation": {
@@ -110,9 +119,9 @@
             // 从任务列表里手动选时，"run" 比 "flash" 好认。
             "label": "run",
             "type": "shell",
-            "command": "./auto_aim_test",
+            "command": "./auto_aim_test -c=../configs/demo.yaml ../assets/demo/demo",
             "options": {
-                "cwd": "${workspaceFolder}/build"
+                "cwd": "${workspaceFolder}/build-mac"
             },
             "problemMatcher": [],
             "presentation": {
@@ -136,7 +145,7 @@
             // 重新走 cmake 配置，顺带生成 clangd 需要的 compile_commands.json。
             "label": "rebuild",
             "type": "shell",
-            "command": "bash make.sh",
+            "command": "./mac/build.sh clean && ./mac/build.sh",
             "options": {
                 "cwd": "${workspaceFolder}"
             },
@@ -154,9 +163,9 @@
             "type": "shell",
             // 注意必须写成 -s=xxx 的等号形式。OpenCV CommandLineParser 不认空格形式，
             // "-s 100" 会把 100 当成位置参数（输入路径），于是去开 100.avi，只报 GStreamer 警告然后退出。
-            "command": "./auto_aim_test -s=${input:startFrame} -e=${input:endFrame}",
+            "command": "./auto_aim_test -c=../configs/demo.yaml -s=${input:startFrame} -e=${input:endFrame} ../assets/demo/demo",
             "options": {
-                "cwd": "${workspaceFolder}/build"
+                "cwd": "${workspaceFolder}/build-mac"
             },
             "problemMatcher": [],
             "presentation": {
@@ -169,7 +178,7 @@
             // 清掉 build 重来。编译出诡异问题时用。
             "label": "clean rebuild",
             "type": "shell",
-            "command": "rm -rf build && bash make.sh",
+            "command": "./mac/build.sh clean && ./mac/build.sh",
             "options": {
                 "cwd": "${workspaceFolder}"
             },

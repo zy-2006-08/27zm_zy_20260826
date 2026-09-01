@@ -15,7 +15,7 @@
 
 namespace io
 {
-
+//                           电控发给算法的包
   struct __attribute__((packed)) GimbalToVision
   {
     uint8_t head[2] = {0x5a, 0x53};  // 偏移 0，2字节：帧头。收包时校验，不对就 flushInput 重新同步（gimbal.cpp:267）
@@ -36,7 +36,7 @@ namespace io
   };
 
   static_assert(sizeof(GimbalToVision) <= 64);
-
+//                      算法发给电控的包
   struct __attribute__((packed)) sb_VisionToGimbal
   {
     uint8_t head = {0x66};    // 偏移 0，1字节：帧头
@@ -54,9 +54,12 @@ namespace io
                               //              0 被留作"无目标"，见 armor.hpp 的 ArmorName
     uint8_t end = {0x11};     // 偏移 35，1字节：帧尾。本包无 crc16，见上方说明
   };
+//                      没加保险
 
   // static_assert(sizeof(VisionToGimbal) <= 64);
 
+
+//            枚举类           
   enum class GimbalMode
   {
     IDLE,              // 空闲
@@ -96,7 +99,6 @@ namespace io
     void send(bool control, bool fire, float yaw, float yaw_vel, float yaw_acc, float pitch, float pitch_vel, float pitch_acc);
     void sb_send(
     bool control, bool fire, float yaw, float yaw_vel, float yaw_acc, float pitch, float pitch_vel, float pitch_acc, float target_x, float target_y,uint8_t target_name);
-    void sb_send(io::sb_VisionToGimbal VisionToGimbal);
     GimbalState * set_state_() { return &state_; }
 
     private:

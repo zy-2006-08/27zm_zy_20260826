@@ -2,86 +2,68 @@
 #
 # ============================================================
 #  本工程只能在 Linux 上真正编译，但代码可以在 Linux/WSL 或 macOS 上阅读。
-#  下面的 include 路径把两种环境的依赖位置都列上了：clangd 会忽略不存在的
-#  -I 目录，所以同一份配置在两边都能用，不必来回改。
+#  这份配置在三台机器上通用，不含任何机器专属的绝对路径，换机器不用改：
 #
-#  Linux / WSL(Ubuntu 22.04)：
-#    OpenCV   4.5.4    /usr/include/opencv4
-#    Eigen    3.4      /usr/include/eigen3
-#    OpenVINO 2024.6.0 /opt/intel/openvino_2024.6.0
-#    fmt / spdlog / yaml-cpp / nlohmann  → /usr/include
+#    小电脑 (Ubuntu, Remote-SSH)   /home/seven/RM27_zimiao/...
+#    WSL    (Windows 上的 /mnt/d)  /mnt/d/RM27_zimiao/...
+#    macOS  (Homebrew, arm64)      /Users/zy/RM27_zimiao/...
 #
-#  macOS(Homebrew，arm64)：
-#    OpenCV / Eigen / fmt / spdlog / yaml-cpp / nlohmann / OpenVINO
-#      → /opt/homebrew/include（Eigen 与 OpenCV 各自还有子目录）
-#    装齐依赖：brew install opencv eigen fmt spdlog yaml-cpp nlohmann-json
+#  ⚠️ 在 Windows 上请通过 Remote-WSL 或 Remote-SSH 打开，不要直接开 Windows
+#     路径。Windows 侧没有这些库，会满屏假红线。
 #
-#  因为库真实存在，clangd 能做完整的语义检查：类型不匹配、变量名拼错、
-#  参数个数不对、成员不存在，全都能提前发现。这比只看语法结构强得多，
-#  所以这里不再压制任何诊断 —— 报出来的错基本都是真的。
+# ------------------------------------------------------------
+#  为什么这里几乎什么都不配：全靠 compile_commands.json
+# ------------------------------------------------------------
+#  cmake 生成的 compile_commands.json 里，每个文件的 include 路径、宏定义
+#  都是按 target 精确算出来的（含 io/daheng、io/hikrobot、planner/tinympc
+#  这些子目录，以及 -DOPENVINO_MAKE 等宏），比手写 -I 全且准。
 #
-#  ⚠️ 在 Windows 上请通过 Remote-WSL 打开（左下角绿色按钮 → Connect to WSL），
-#     不要直接开 Windows 路径。Windows 侧没有这些库，会满屏假红线。
+#  clangd 会自动去找它，无需在这里指定路径。实测（clangd 21）它只认两个位置：
+#      <工程根>/compile_commands.json
+#      <工程根>/build/compile_commands.json
+#  别的目录名（build-mac、out、cmake-build、Build）都找不到。
+#
+#  ⚠️ 千万不要在这里写 CompileFlags.CompilationDatabase。
+#     实测：该字段一旦指向不存在的目录，clangd 会**停止**自动搜索并直接失败
+#     （日志 `Failed to find compilation database`），不会回退。
+#     曾因为它被写成 build-mac，在小电脑上造成整个工程满屏假红线（21 errors）。
+#     不写这一行，Linux 命中 build/，Mac 靠 mac/build.sh 建的
+#     build -> build-mac 软链同样命中。
+#
+#  各平台怎么生成：
+#    小电脑/WSL   bash make.sh                       -> build/
+#    macOS        ./mac/build.sh                     -> build-mac/ + build 软链
+#  换分支或改过 CMakeLists 后重新生成一次（rebuild task）即可。
+#
+#  DB 没生成时的表现：clangd 回退到下面 Add: 的通用参数。第三方库仍能解析
+#  （路径两个平台都列了），但工程内部的 #include "tasks/..." 会失败，
+#  因为工程根只能靠 DB 提供。症状是满屏假红线 —— 这时先跑一次 rebuild。
 # ============================================================
 
 CompileFlags:
-  # ⚠️ macOS 上必须指向 build-mac，不能指向 build。
-  #
-  # build/compile_commands.json 是 docker/ 那套 Linux 容器里跑 cmake 生成的，
-  # 48 条记录的 directory / file 全是 /workspace/... 容器内路径。clangd 在
-  # macOS 上加载它会对每个翻译单元报
-  #     VFS: failed to set CWD to /workspace/build/...: No such file or directory
-  # 于是一个翻译单元都建不起来，~/.cache/clangd/index/ 始终为空。表现就是
-  # 「查找所有引用」只剩当前文件里的声明和定义 —— 例如 Gimbal::state() 实际
-  # 被 tracker.cpp 和 rb_auto_aim_debug.cpp 调用 4 次，却显示只有 2 个结果。
-  #
-  # build-mac/compile_commands.json 由 `python3 mac/gen_compile_commands.py`
-  # 从容器那份翻译而来：路径改写到本机，Linux 库 include 换成 Homebrew 前缀。
-  # 保留它而不是直接弃用容器 DB，是因为里面带了下面 Add: 没有的 include
-  # （io/daheng、io/hikrobot、planner/tinympc）和宏（-DOPENVINO_MAKE 等），
-  # 这些是 cmake 按 target 算出来的，手写容易漏。
-  #
-  # 换分支或改过 CMakeLists 后重新生成一次即可。文件不存在时 clangd 自动
-  # 回退到 Add: 的通用参数，仍然可用，只是精度略低。
-  CompilationDatabase: build-mac
-
+  # 这里只放「DB 缺失时的兜底」。DB 生效时这些会被 DB 里的真实参数覆盖，
+  # 所以不必写全，也刻意不写任何机器专属的绝对路径。
   Add:
     - -std=c++17
-    # 工程自身头文件根目录，让 #include "tasks/..." "io/..." "tools/..." 可解析。
-    #
-    # ⚠️ 必须写绝对路径，不能写 -I. ：clangd 是以「被编辑文件所在目录」为
-    # 工作目录来解析相对 -I 的。编辑 src/rb_auto_aim_debug.cpp 时 -I. 会展开成
-    # src/，于是 #include "io/camera.hpp" 找不到，进而整个文件满屏假红线。
-    - -I/Users/zy/RM27_zimiao/27zm_zy_20260831
-    # 随仓库携带的串口库，gimbal.hpp 的 #include "serial/serial.h" 用到
-    - -I/Users/zy/RM27_zimiao/27zm_zy_20260831/io/serial/include
     # ---- Linux / WSL 上的第三方库 ----
+    #      OpenCV 4.5.4 / Eigen 3.4 / OpenVINO 2024.6.0
+    #      fmt / spdlog / yaml-cpp / nlohmann 在 /usr/include，无需 -I
     - -I/usr/include/eigen3
     - -I/usr/include/opencv4
     - -I/opt/intel/openvino_2024.6.0/runtime/include
-    # ---- macOS(Homebrew) 上的第三方库；在 Linux 上这些目录不存在，会被忽略 ----
+    # ---- macOS(Homebrew) 上的第三方库 ----
+    #      装齐：brew install opencv eigen fmt spdlog yaml-cpp nlohmann-json openvino
+    #      clangd 会忽略不存在的 -I 目录，所以在 Linux 上这三行自动失效。
     - -I/opt/homebrew/include
     - -I/opt/homebrew/include/eigen3
     - -I/opt/homebrew/include/opencv4
-    # ---- macOS 专用：Linux 内核头文件的编辑器占位实现 ----
-    #
-    # io/socketcan.hpp 用的 SocketCAN(<linux/can.h>) 和 epoll(<sys/epoll.h>)
-    # 是 Linux 内核特性，macOS 上根本不存在这两个头文件。而它经由
-    # io/cboard.hpp → aimer.hpp → shooter.hpp 被 src/rb_auto_aim_debug.cpp
-    # 间接包含，一个找不到的头文件会让 clangd 直接放弃整个翻译单元 ——
-    # 后果就是文件里所有 tools:: / cv:: / io:: 全变成"未声明的标识符"，满屏红线。
-    #
-    # 所以在 ~/.config/clangd-mac-shim/ 下放了两份只给编辑器看的占位头文件，
-    # 按 Linux UAPI 复刻工程实际用到的类型和常量。它们不在仓库里，也不参与
-    # 任何真实编译；Linux 上该目录不存在，此 -I 自动失效，用的还是内核真头文件。
-    - -I/Users/zy/.config/clangd-mac-shim
 
 Diagnostics:
-  # 不再压制任何诊断。库都在，报错就是真错，该修。
+  # 不压制诊断。库都在、DB 也准，报错基本都是真错，该修。
   #
-  # 唯一放宽的是 include 相关的两项：本工程多个文件依赖头文件间接包含
+  # 唯一放宽的是 include 整理建议：本工程多个文件依赖头文件间接包含
   # （例如 gimbal.hpp 用 uint8_t 却靠 Eigen 带进 <cstdint>），
-  # 开着会产生大量与代码逻辑无关的整理建议，干扰阅读。
+  # 开着会产生大量与代码逻辑无关的提示，干扰阅读。
   UnusedIncludes: None
 
   ClangTidy:
@@ -100,8 +82,22 @@ Diagnostics:
       - modernize-use-trailing-return-type
 
 # ------------------------------------------------------------
-#  如果你确实要在 Windows 侧（非 WSL）打开本工程，
-#  上面的 Linux 路径全都不存在，会产生几百个假错误。
+#  关于 macOS 上的 Linux 内核头文件
+# ------------------------------------------------------------
+#  io/socketcan.hpp 用的 SocketCAN(<linux/can.h>) 和 epoll(<sys/epoll.h>)
+#  是 Linux 内核特性，macOS 上不存在。它经由
+#  io/cboard.hpp → aimer.hpp → shooter.hpp 被 src/rb_auto_aim_debug.cpp
+#  间接包含，一个找不到的头文件会让 clangd 放弃整个翻译单元。
+#
+#  仓库里的 .clangd-stubs/ 按 Linux UAPI 复刻了工程用到的类型和常量，
+#  只给编辑器看，不参与真实编译。它由 mac/gen_compile_commands.py 写进
+#  build-mac/compile_commands.json 的每条命令里（见该脚本 -I.clangd-stubs 那行），
+#  所以这里不需要、也不应该再加 -I —— 在 Linux 上加了反而有覆盖真内核头的风险。
+# ------------------------------------------------------------
+
+# ------------------------------------------------------------
+#  如果你确实要在 Windows 侧（非 WSL / 非 SSH）打开本工程，
+#  上面的路径全都不存在，会产生几百个假错误。
 #  那种情况下把下面两行的注释去掉，可屏蔽全部诊断：
 #
 #  Diagnostics:

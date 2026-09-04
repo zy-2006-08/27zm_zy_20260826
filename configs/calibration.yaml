@@ -13,25 +13,27 @@ square_size_mm: 30   # 棋盘格方块大小（毫米）
 # flip: false
 # mirror: false
 
-# camera_name: "daheng"
-# camera_sn: "FDN21050087"
-# exposure_us: 18000
-# gain: 0.3
-# gamma: 0.7
-# vid_pid: "2bdf:0001"
-# flip: true
-# mirror: true
-
-#omn_r
+# ↓↓↓ 当前实机在用（USB 实测 SN=FDN21050087, MER2-160-227U3C）
 camera_name: "daheng"
-camera_sn: "KE0210030295"
-exposure_us: 10000
-gain: 0.8
-gamma: 0.5
+camera_sn: "FDN21050087"
+exposure_us: 18000
+gain: 0.3
+gamma: 0.7
 img_gamma: 1
 vid_pid: "2ba2:4d55"
 flip: true
 mirror: true
+
+#omn_r
+# camera_name: "daheng"
+# camera_sn: "KE0210030295"
+# exposure_us: 10000
+# gain: 0.8
+# gamma: 0.5
+# img_gamma: 1
+# vid_pid: "2ba2:4d55"
+# flip: true
+# mirror: true
 
 #omn_l
 # camera_name: "daheng"

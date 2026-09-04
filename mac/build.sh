@@ -29,6 +29,8 @@ cd "$ROOT"
 
 if [ "${1:-}" = "clean" ]; then
     rm -rf "$OUT"
+    # 连 clangd 用的软链一起收掉（只删软链，绝不碰真目录）
+    [ -L "$ROOT/build" ] && rm -f "$ROOT/build"
     echo "已删除 $OUT"
     exit 0
 fi
@@ -122,6 +124,30 @@ g++ -o "$OUT/auto_aim_test" "$OUT"/obj/*.o \
     -framework IOKit -framework Foundation
 
 echo "==> 产物：$OUT/auto_aim_test"
+
+# ---- 给 clangd 建 build -> build-mac 软链 ----
+# clangd 自动搜索 compile_commands.json 时只认两个位置（实测 clangd 21）：
+#     <工程根>/compile_commands.json
+#     <工程根>/build/compile_commands.json
+# build-mac 这个名字它不认。而 .clangd 里刻意没写 CompilationDatabase ——
+# 那个字段一旦指向不存在的目录，clangd 会停止搜索并直接失败，
+# 曾因为它被写成 build-mac 导致小电脑上满屏假红线。
+# 所以这里用软链把 build-mac 映射成 build，两个平台共用一份 .clangd。
+#
+# build/ 和 build-mac/ 都在 .gitignore 里，软链不会进版本库。
+# 只在「不存在」或「已是软链」时动手，避免误删 Linux 上的真 build 目录。
+if [ ! -e "$ROOT/build" ] || [ -L "$ROOT/build" ]; then
+    ln -sfn "$OUT" "$ROOT/build"
+    echo "==> clangd 软链：build -> $(basename "$OUT")"
+else
+    echo "==> 跳过 clangd 软链：$ROOT/build 是真目录（Linux 构建产物？）" >&2
+fi
+
+# compile_commands.json 不是 build.sh 生成的，缺了 clangd 只能用兜底参数
+if [ ! -f "$OUT/compile_commands.json" ]; then
+    echo "==> 提示：$OUT/compile_commands.json 不存在，clangd 精度会下降" >&2
+    echo "    生成：python3 mac/gen_compile_commands.py" >&2
+fi
 
 if [ "${1:-}" = "run" ]; then
     # 配置文件里的模型路径写的是 ../assets/xxx（相对于小电脑上的 build/ 目录），

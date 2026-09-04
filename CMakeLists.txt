@@ -107,6 +107,7 @@ target_link_libraries(auto_aim_test ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim to
 #   calibrate_robotworld_handeye 手眼标定（同时求标定板位置）
 #   split_video                  视频抽帧
 #   test_simple                  重投影简单验证
+#   camera_tuning                相机调参助手（实时看清晰度/亮度，调曝光增益）
 # 需要连相机/云台的程序才链接 io，纯离线处理图片的只链接 tools。
 # ---------------------------------------------------------------------------
 add_executable(capture calibration/capture.cpp)
@@ -129,3 +130,9 @@ target_link_libraries(split_video ${OpenCV_LIBS} fmt::fmt tools)
 
 add_executable(test_simple calibration/test_simple.cpp)
 target_link_libraries(test_simple ${OpenCV_LIBS} fmt::fmt yaml-cpp tools io)
+
+# camera_tuning 直接调大恒 SDK（gxiapi），不经过 io::Camera ——
+# io::Camera 只在构造时设一次曝光，运行期改不了，而调参需要即时生效。
+# 因此这里不链接 io，而是单独链 gxiapi；也因此本程序只支持大恒相机。
+add_executable(camera_tuning calibration/camera_tuning.cpp)
+target_link_libraries(camera_tuning ${OpenCV_LIBS} fmt::fmt yaml-cpp tools gxiapi)

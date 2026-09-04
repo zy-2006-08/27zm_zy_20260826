@@ -58,3 +58,10 @@ compile_commands.json
 Thumbs.db
 ehthumbs.db
 desktop.ini
+
+# camera_tuning 按 p 键产出的调参结果。每台机器的相机、镜头、现场光照都不同，
+# 这个文件是「当前这台机器的临时记录」，用完就抄进 configs/calibration.yaml，
+# 进版本库只会造成无意义的冲突。
+configs/tuning_result.yaml
+# camera_tuning 按空格键存的快照
+build*/tuning_snapshot.jpg

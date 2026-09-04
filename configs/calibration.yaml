@@ -16,8 +16,13 @@ square_size_mm: 30   # 棋盘格方块大小（毫米）
 # ↓↓↓ 当前实机在用（USB 实测 SN=FDN21050087, MER2-160-227U3C）
 camera_name: "daheng"
 camera_sn: "FDN21050087"
-exposure_us: 18000
-gain: 0.3
+# 2026-09-04 实机调参（camera_tuning 实测）：
+#   对焦 sharp 6 -> 114（峰值 351）；压曝光后超阈值(150)占比 7.79% -> 0.53%，
+#   即 detector 二值化后几乎全黑，无环境假灯条。亮度 44 —— 自瞄要的就是暗。
+#   增益暂时拉满(24dB)是因为室内桌面调、手上没有通电装甲板；
+#   等有真装甲板后应能降回 0.4~0.5（对齐 demo.yaml / sb_long.yaml），降低噪点。
+exposure_us: 2000
+gain: 1.0
 gamma: 0.7
 img_gamma: 1
 vid_pid: "2ba2:4d55"

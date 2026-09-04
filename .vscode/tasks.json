@@ -85,7 +85,10 @@
             // 日常增量编译没必要。
             "label": "build",
             "type": "shell",
-            "command": "if [ \"$(uname)\" = Darwin ]; then ./mac/build.sh; else make -C build -j$(nproc); fi",
+            // 按当前编辑的文件决定编哪个目标（见 scripts/build_current.sh）。
+            // 打开 camera_tuning.cpp 就只编 camera_tuning，比全量 make 快很多；
+            // 打开库代码（detector.cpp 等）则编默认目标 auto_aim_test。
+            "command": "bash scripts/build_current.sh '${relativeFile}'",
             "options": {
                 "cwd": "${workspaceFolder}"
             },
@@ -111,7 +114,10 @@
             // 在别的目录跑会找不到配置文件然后直接 exit(1)。
             "label": "flash",
             "type": "shell",
-            "command": "if [ \"$(uname)\" = Darwin ]; then cd build-mac; else cd build; fi && ./auto_aim_test",
+            // 按当前编辑的文件决定跑哪个程序（见 scripts/run_current.sh）。
+            // 脚本还会顺手处理两件事：切换程序前清掉占着相机的上一个进程；
+            // SSH 会话里自动设 DISPLAY=:0，让窗口出现在小电脑的显示器上。
+            "command": "bash scripts/run_current.sh '${relativeFile}'",
             "options": {
                 "cwd": "${workspaceFolder}"
             },
@@ -137,7 +143,7 @@
             // 从任务列表里手动选时，"run" 比 "flash" 好认。
             "label": "run",
             "type": "shell",
-            "command": "if [ \"$(uname)\" = Darwin ]; then cd build-mac; else cd build; fi && ./auto_aim_test",
+            "command": "bash scripts/run_current.sh '${relativeFile}'",
             "options": {
                 "cwd": "${workspaceFolder}"
             },
@@ -181,7 +187,7 @@
             "type": "shell",
             // 注意必须写成 -s=xxx 的等号形式。OpenCV CommandLineParser 不认空格形式，
             // "-s 100" 会把 100 当成位置参数（输入路径），于是去开 100.avi，只报 GStreamer 警告然后退出。
-            "command": "if [ \"$(uname)\" = Darwin ]; then cd build-mac; else cd build; fi && ./auto_aim_test -s=${input:startFrame} -e=${input:endFrame}",
+            "command": "bash scripts/run_current.sh '${relativeFile}' -s=${input:startFrame} -e=${input:endFrame}",
             "options": {
                 "cwd": "${workspaceFolder}"
             },

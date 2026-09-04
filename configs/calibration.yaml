@@ -12,7 +12,6 @@ square_size_mm: 30   # 棋盘格方块大小（毫米）
 # vid_pid: "2bdf:0001"
 # flip: false
 # mirror: false
-# timestamp_offset_us: 1000 #us
 
 # camera_name: "daheng"
 # camera_sn: "FDN21050087"
@@ -22,7 +21,6 @@ square_size_mm: 30   # 棋盘格方块大小（毫米）
 # vid_pid: "2bdf:0001"
 # flip: true
 # mirror: true
-# timestamp_offset_us: 1000 #us
 
 #omn_r
 camera_name: "daheng"
@@ -34,7 +32,6 @@ img_gamma: 1
 vid_pid: "2ba2:4d55"
 flip: true
 mirror: true
-timestamp_offset_us: 1000 #us
 
 #omn_l
 # camera_name: "daheng"
@@ -45,7 +42,6 @@ timestamp_offset_us: 1000 #us
 # vid_pid: "2ba2:4d55"
 # flip: false
 # mirror: false
-# timestamp_offset_us: 1000 #us
 
 # camera_name: "daheng"
 # camera_sn: "FDN24040486"
@@ -55,7 +51,6 @@ timestamp_offset_us: 1000 #us
 # vid_pid: "2ba2:4d55"
 # flip: false
 # mirror: false
-# timestamp_offset_us: 1000 #us
 
 #####-----cboard参数-----#####
 quaternion_canid: 0x01

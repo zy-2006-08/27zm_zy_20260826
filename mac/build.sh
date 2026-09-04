@@ -76,7 +76,6 @@ SOURCES=(
     tasks/auto_aim/target.cpp                # 整车估计 EKF
     tasks/auto_aim/tracker.cpp               # 状态机：detecting/tracking/lost
     tasks/auto_aim/aimer.cpp                 # 瞄准点决策（旧版，非 MPC）
-    tasks/auto_aim/voter.cpp
     tools/img_tools.cpp
     tools/logger.cpp
     tools/math_tools.cpp

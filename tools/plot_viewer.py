@@ -69,7 +69,10 @@ def main():
     plt.show(block=False)
 
     print(f"画 {fields}，关掉窗口即退出。")
-    sock.settimeout(0.05)
+    # 非阻塞：把「此刻已到达」的包排空就立即重绘。
+    # 用 settimeout(0.05) 的话 recvfrom 会一直等到超时才 break，而程序每 ~22ms
+    # 发一包，于是内层循环总是跑满 200 次（≈4s）才出来，曲线变成几秒跳一次。
+    sock.setblocking(False)
     n = 0
 
     while plt.fignum_exists(fig.number):
@@ -78,8 +81,8 @@ def main():
         for _ in range(200):
             try:
                 raw, _ = sock.recvfrom(65536)
-            except socket.timeout:
-                break
+            except BlockingIOError:
+                break  # 队列空了，立刻去重绘
             try:
                 d = json.loads(raw.decode())
             except (json.JSONDecodeError, UnicodeDecodeError):

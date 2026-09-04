@@ -20,7 +20,6 @@
 #include "tools/logger.hpp"
 #include "tools/math_tools.hpp"
 #include "tools/plotter.hpp"
-#include "tools/recorder.hpp"
 #include "tools/thread_safe_queue.hpp"
 
 using namespace std::chrono_literals;

@@ -24,7 +24,6 @@ add_library(tools OBJECT
     math_tools.cpp
     plotter.cpp
     trajectory.cpp
-    recorder.cpp
     logger.cpp
     pid.cpp
     crc.cpp

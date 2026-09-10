@@ -1,3 +1,6 @@
+#include <chrono>
+#include <string>
+#include <fmt/core.h>
 #include "gimbal.hpp"
 
 #include <opencv2/opencv.hpp>
@@ -106,9 +109,72 @@ namespace io
     sb_tx_data_.pitch = pitch;
     sb_tx_data_.pitch_vel = pitch_vel;
     sb_tx_data_.pitch_acc = pitch_acc;
-    sb_tx_data_.target_x = target_x;
-    sb_tx_data_.target_y = target_y;
-    sb_tx_data_.target_name = target_name;
+
+    // target_x / target_y / target_name 已从协议中移除(见 gimbal.hpp 的说明):
+    // 电控 29 字节协议里没有这三个字段的位置。形参保留是为了不改动调用点
+    // (rb_auto_aim_debug.cpp:106), 这里显式忽略, 避免 -Wunused-parameter。
+    (void)target_x;
+    (void)target_y;
+    (void)target_name;
+
+    // CRC16 覆盖 head 到 pitch_acc 共 26 字节, 不含 crc16 自身与 end。
+    // 与 tools::get_crc16 的约定一致: "len不包括crc16"。
+    //
+    // 电控当前把 check_crc16 注释掉了, 所以填错也能跑 —— 正因如此才更要填对:
+    // 否则等哪天电控放开校验, 又要回头查一遍这条链路。
+    sb_tx_data_.crc16 = tools::get_crc16(reinterpret_cast<const uint8_t *>(&sb_tx_data_), 26);
+
+    // ---- 发送侧链路诊断 ----
+    //
+    // 为什么需要它: 云台"不跟随"时, 光看视觉端日志分不清是哪一环断了 ——
+    // 识别没出目标? planner 没给 control? 还是包发出去了电控不认?
+    // 这三种情况在原来的日志里长得一模一样(都是"程序在正常跑")。
+    //
+    // 电控的采纳条件在 Core/Src/stm32f4xx_it.c:423-444, 全部满足才会写 Target_Angle:
+    //     Mini_PC_rx_buf[0]==0x66 && Mini_PC_rx_buf[28]==0x11   帧格式
+    //     YK_Mode == PLAYER_MODE || YK_Mode == SHOOT_MODE       遥控档位
+    //     request.zimiao_status                                 自瞄使能(右键或 yaogan.v < -600)
+    //     !request.buff_status                                  非打符模式
+    //     SuperPower.mode == 1 || == 2                          ★视觉端必须发 1 或 2
+    // 前四条在电控侧, 这里看不到; 最后一条就是本包的 mode 字段, 由 plan.control 决定。
+    //
+    // mode 的来源链: 识别到装甲板 -> tracker 确认 -> planner 返回 control=true -> mode=1
+    // 任何一环没成, mode 就是 0, 电控收下包也不会动云台 —— 这正是"抖一下就没了"的成因:
+    // 偶尔某帧识别成功发了个 1, 云台刚要动, 下一帧又变回 0。
+    {
+      // TX_MODE_WATCH
+      static uint8_t last_mode = 255;
+      static auto last_report = std::chrono::steady_clock::now();
+      static int cnt_total = 0, cnt_ctrl = 0;
+
+      cnt_total++;
+      if (sb_tx_data_.mode != 0) cnt_ctrl++;
+
+      // mode 跳变时立刻打一条, 这是最有价值的信号
+      if (sb_tx_data_.mode != last_mode)
+      {
+        const auto * p = reinterpret_cast<const uint8_t *>(&sb_tx_data_);
+        tools::logger()->info(
+          "[Gimbal] mode {} -> {} ({})  yaw={:.2f}deg pitch={:.2f}deg  首字节={:02X} 末字节={:02X}", last_mode == 255 ? 0 : last_mode,
+          sb_tx_data_.mode,
+          sb_tx_data_.mode == 0 ? "不控制:视觉没给出目标" : (sb_tx_data_.mode == 1 ? "控云台不开火" : "控云台并开火"),
+          sb_tx_data_.yaw * 57.2958f, sb_tx_data_.pitch * 57.2958f, p[0], p[sizeof(sb_tx_data_) - 1]);
+        last_mode = sb_tx_data_.mode;
+      }
+
+      // 每 2 秒报一次占比, 用来判断"识别是否稳定"
+      auto now = std::chrono::steady_clock::now();
+      if (now - last_report > std::chrono::seconds(2))
+      {
+        last_report = now;
+        double pct = cnt_total ? 100.0 * cnt_ctrl / cnt_total : 0.0;
+        if (cnt_ctrl == 0)
+          tools::logger()->warn("[Gimbal] 近2秒发出 {} 帧, mode 全为 0 -> 视觉没锁定目标, 云台不会动", cnt_total);
+        else
+          tools::logger()->info("[Gimbal] 近2秒发出 {} 帧, 其中 mode!=0 占 {:.0f}% ({} 帧)", cnt_total, pct, cnt_ctrl);
+        cnt_total = cnt_ctrl = 0;
+      }
+    }
 
     try
     {

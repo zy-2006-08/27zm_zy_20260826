@@ -34,7 +34,7 @@ namespace auto_aim
 
     const int class_num_ = 2;
     const float nms_threshold_ = 0.3;
-    const float score_threshold_ = 0.7;
+    const float score_threshold_ = 0.5;
     double min_confidence_, binary_threshold_;
 
     ov::Core core_;

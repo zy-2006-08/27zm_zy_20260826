@@ -34,12 +34,12 @@ use_traditional: true
 #####-----ROI-----#####
 roi: 
   x: 420
-  y: 50
+  y: 250
   width: 600
   height: 600
 
 use_roi: false
-
+# use_roi: true
 #####-----传统方法参数-----#####
 threshold: 150
 max_angle_error: 45 # degree
@@ -80,13 +80,39 @@ auto_fire: true # 是否由自瞄控制射击
 # flip: false
 # mirror: false
 
-camera_name: "daheng"
-camera_sn: "FDN21050087"
-exposure_us: 1020
-gain: 0.85
+# camera_name 支持 "auto": 程序自己枚举, 先找海康再找大恒, 找到哪个用哪个。
+# 这样换相机不用改配置 —— 队里两种相机混用, 忘改 camera_name 的表现是
+# "找不到相机", 排查起来比它值得的时间长得多。
+# 需要强制指定时把 auto 换成 "hikrobot" 或 "daheng" 即可。
+camera_name: "auto"
+
+# camera_sn 留空表示"用探测到的那台"。只有一台相机时不必填;
+# 填错反而会让 hikrobot.cpp 的 ChoiceCamrea / daheng 的 enum_and_check_camera 匹配不上。
+camera_sn: ""
+
+# 曝光/增益。注意两家的 gain 口径不同, 都是 0~1 归一化值, 但换算方式不一样:
+#   大恒 -> 映射到 dB 量程 (本机 0-24dB)
+#   海康 -> 乘以 AutoGainUpperLimit
+# 所以同一个数字在两家相机上亮度不同, 换相机后需要重新调。
+# 下面这组是海康 MV-CS016-10UC 实测可用值(室内日光灯)。
+# 大恒 MER2-160 上车用的是 exposure_us: 3000 / gain: 0.85, 换回大恒时改这两行。
+exposure_us: 15000
+gain: 0.6
 gamma: 0.7
 img_gamma: 1
 vid_pid: "2ba2:4d55"
+# flip / mirror 是"画面转 180 度"的开关，取决于相机在车上怎么装的。
+# 两者同时为 true 等价于旋转 180 度（见 io/hikrobot/hikrobot.cpp 的两次 cv::flip）。
+#
+# 这台相机是倒装的，所以要 true —— 判断依据：camera_tuning 不读这两个参数，
+# 它显示的是相机原始画面，实测是倒的。
+#
+# ⚠️ 必须成对改。只改一个是"镜像"而不是"转 180 度"，
+#    那会让装甲板上的数字左右颠倒，数字分类器直接认错 ——
+#    这种错很隐蔽：画面看着是正的，但识别率莫名很低。
+#
+# 换相机或改安装方向后，用 camera_tuning 按 f 键现场确认：
+# 它会显示当前是否翻转，按 p 存盘时也会把 flip/mirror 一起写进结果文件。
 flip: true
 mirror: true
 

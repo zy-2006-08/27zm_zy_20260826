@@ -38,6 +38,21 @@ namespace io
 
     Camera(const std::string & config_path);
 
+    // 相机品牌自动探测。
+    //
+    // 动机: 队里同时有大恒和海康两种相机, 换相机时要手工改 yaml 的 camera_name,
+    // 忘了改的表现是"程序起不来"或"找不到相机", 排查起来很费时间。
+    // 让程序自己枚举一遍就能消掉这类问题。
+    //
+    // 返回 "hikrobot" / "daheng" / "" (都没找到)。
+    // 两家都插着时优先返回 hikrobot —— 仅出于给一个确定结果, 无偏好含义;
+    // 这种情况下应当在 yaml 里显式写明品牌。
+    static std::string detect_brand();
+
+    // 探测到的相机 SN。detect_brand() 成功后才有效。
+    // 用途: yaml 里 camera_sn 写错或为空时可以回落到实际枚举到的 SN。
+    static std::string detected_sn();
+
     static void initSDK();
     void read(cv::Mat & img, std::chrono::steady_clock::time_point & timestamp);
     bool try_read(cv::Mat & img, std::chrono::steady_clock::time_point & timestamp);

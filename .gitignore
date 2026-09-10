@@ -65,3 +65,12 @@ desktop.ini
 configs/tuning_result.yaml
 # camera_tuning 按空格键存的快照
 build*/tuning_snapshot.jpg
+# 海康 SDK 传输层插件软链 (指向本机 /opt/MVS, 机器相关, 不入库)
+io/hikrobot/lib/*/libMvUsb3vTL.so
+io/hikrobot/lib/*/libMVGigEVisionSDK.so
+io/hikrobot/lib/*/libMvCamLVision.so
+io/hikrobot/lib/*/libMediaProcess.so
+io/hikrobot/lib/*/libMVRender.so
+io/hikrobot/lib/*/liblog4cpp_*.so
+# 海康 SDK 在 GENICAM_CACHE 未设置时按字面创建的目录
+$(ALLUSERSPROFILE)/

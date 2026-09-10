@@ -8,6 +8,7 @@
 
 #ifdef OPENVINO_MAKE
 #include "yolos/yolo11.hpp"
+#include "yolos/yolo7.hpp"
 #include "yolos/yolov5.hpp"
 #include "yolos/yolov8.hpp"
 #endif
@@ -35,9 +36,22 @@ namespace auto_aim
       yolo_ = std::make_unique<YOLOV5>(config_path, debug);
     }
 
+    // yolo7 不是 YOLOv7 网络，加载的仍是 assets/yolov8.xml。
+    // 它是 YOLOV8 的副本，只把 sort_keypoints 换成极角排序，
+    // 用来验证/修正「装甲板 roll 超过 22° 就识别不到」。详见 yolos/yolo7.hpp。
+    //
+    // 同时接受 "yolov7" 这个写法：旁边三个后端都叫 yolov5 / yolov8 / yolo11，
+    // 顺手写成 yolov7 很自然（而且 YOLOv7 确实是个真实存在的网络，更容易混）。
+    // 两种写法都指向同一个 YOLO7，避免因为一个字母排查半天。
+    else if (yolo_name == "yolo7" || yolo_name == "yolov7")
+    {
+      yolo_ = std::make_unique<YOLO7>(config_path, debug);
+    }
+
     else
     {
-      throw std::runtime_error("Unknown yolo name: " + yolo_name + "!");
+      throw std::runtime_error(
+        "Unknown yolo name: " + yolo_name + "! 可用值: yolov5 / yolov8 / yolo11 / yolo7(=yolov7, 修正关键点排序的 v8)");
     }
 
 #endif

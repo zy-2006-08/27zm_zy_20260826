@@ -38,6 +38,7 @@ add_library(auto_aim OBJECT
     yolo.cpp
     yolos/yolov5.cpp
     yolos/yolov8.cpp
+    yolos/yolo7.cpp
     yolos/yolo11.cpp
     planner/planner.cpp
 )

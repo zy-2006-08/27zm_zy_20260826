@@ -108,6 +108,7 @@ target_link_libraries(auto_aim_test ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim to
 #   split_video                  视频抽帧
 #   test_simple                  重投影简单验证
 #   camera_tuning                相机调参助手（实时看清晰度/亮度，调曝光增益）
+#   detect_test                  相机识别测试（接相机跑识别，识别到就画框）
 # 需要连相机/云台的程序才链接 io，纯离线处理图片的只链接 tools。
 # ---------------------------------------------------------------------------
 add_executable(capture calibration/capture.cpp)
@@ -136,3 +137,10 @@ target_link_libraries(test_simple ${OpenCV_LIBS} fmt::fmt yaml-cpp tools io)
 # 因此这里不链接 io，而是单独链 gxiapi；也因此本程序只支持大恒相机。
 add_executable(camera_tuning calibration/camera_tuning.cpp)
 target_link_libraries(camera_tuning ${OpenCV_LIBS} fmt::fmt yaml-cpp tools gxiapi)
+
+# detect_test = test_simple 的相机 + auto_aim_test 的识别画框。
+# 工程原本没有「接相机 + 跑识别」的组合：test_simple 不识别，
+# auto_aim_test 读录像不接相机，rb_auto_aim_debug 要连 C 板串口否则 exit(1)。
+# 链接 auto_aim 拿 YOLO/Detector，链接 io 拿相机。
+add_executable(detect_test calibration/detect_test.cpp)
+target_link_libraries(detect_test ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim tools io)

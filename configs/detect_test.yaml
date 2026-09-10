@@ -1,0 +1,144 @@
+# ============================================================================
+#  实机识别测试配置 / live detection config
+# ----------------------------------------------------------------------------
+#  给 build/detect_test 用：接相机实时跑装甲板识别、识别到画框。
+#
+#  为什么单独一份，不复用现有的两个：
+#    · configs/calibration.yaml  是标定专用，只有相机参数和标定矩阵，
+#      没有 yolo_name / threshold / min_confidence 这些识别参数。
+#      直接拿它跑识别会在 YAML 转换时抛 TypedBadConversion 崩掉。
+#    · configs/demo.yaml         有完整识别参数，但相机段是另一台机器
+#      (SN FDN24040486)，在本机跑会找不到相机。
+#  所以本文件 = demo.yaml 的识别参数 + calibration.yaml 的实机相机参数。
+#
+#  相机参数已同步为实测值（SN FDN21050087）。改了 calibration.yaml 里的
+#  曝光/增益后，记得也同步到这里，否则两个程序看到的画面不一样。
+#
+#  ⚠️ camera_matrix / distort_coeffs 只在 3D 解算时才用到。detect_test
+#     不做解算（那需要 C 板提供云台姿态），这两项此处仅作留档。
+# ============================================================================
+
+# enemy_color: "red"
+enemy_color: "blue"
+
+#####-----神经网络参数-----#####
+yolo_name: yolov8
+classify_model: ../assets/tiny_resnet.onnx
+yolo11_model_path: ../assets/yolo11.xml
+yolov8_model_path: ../assets/yolov8.xml
+yolov5_model_path: ../assets/yolov5.xml
+device: CPU
+min_confidence: 0.8
+use_traditional: true
+
+#####-----ROI-----#####
+roi: 
+  x: 420
+  y: 50
+  width: 600
+  height: 600
+
+use_roi: false
+
+#####-----传统方法参数-----#####
+threshold: 150
+max_angle_error: 45 # degree
+min_lightbar_ratio: 1.5
+max_lightbar_ratio: 20
+min_lightbar_length: 8
+min_armor_ratio: 1
+max_armor_ratio: 5
+max_side_ratio: 1.5
+max_rectangular_error: 25 # degree
+min_confidence: 0.8
+
+#####-----tracker参数-----#####
+min_detect_count: 5
+max_temp_lost_count: 11
+outpost_max_temp_lost_count: 75
+
+#####-----aimer参数-----#####
+yaw_offset: -0.5 # degree -2.5
+pitch_offset: 2 # degree 2
+comming_angle: 60 # degree
+leaving_angle: 20 # degree
+decision_speed: 8 # rad/s
+high_speed_delay_time: 0.030 # s
+low_speed_delay_time: 0.015 # s
+far_pitch_offset: 1.2
+
+#####-----shooter参数-----#####
+first_tolerance: 3 # 近距离射击容差，degree
+second_tolerance: 2 # 远距离射击容差，degree
+judge_distance: 2 #距离判断阈值
+auto_fire: true # 是否由自瞄控制射击
+
+# camera_name: "hikrobot"
+# exposure_us: 2000
+# gain: 16
+# vid_pid: "2bdf:0001"
+# flip: false
+# mirror: false
+
+camera_name: "daheng"
+camera_sn: "FDN21050087"
+exposure_us: 1020
+gain: 0.85
+gamma: 0.7
+img_gamma: 1
+vid_pid: "2ba2:4d55"
+flip: true
+mirror: true
+
+# -1  0  0
+#  0 -1  0
+#  0  0  1
+# R_gimbal2imubody: [-1, 0, 0, 0, -1, 0, 0, 0, 1]
+R_gimbal2imubody: [-1, 0, 0, 0, -1, 0, 0, 0, 1]
+
+# 重投影误差: 0.1164px
+camera_matrix: [1737.039655225044, 0, 610.8806746255623, 0, 1737.2743775332876, 484.79049617651157, 0, 0, 1]
+distort_coeffs: [-0.04884453537210094, 0.12555422968265023, -0.0012399241853100107, -0.0008682406079784554, 0.008637363052025166]
+
+# 相机同理想情况的偏角: yaw-0.60 pitch-0.35 roll-1.53 degree
+# 标定板到世界坐标系原点的水平距离: 3.23 m
+# 标定板同竖直摆放时的偏角: yaw37.61 pitch3.23 roll-0.06 degree
+R_camera2gimbal: [0.010630568168778162, -0.005789248980673708, 0.9999267351244534, -0.9995886616740502, -0.02669899594545312, 0.010472395532356843, 0.02663641254167717, -0.9996267544497518, -0.006070693137125566]
+t_camera2gimbal: [0.115368524404037, -0.047768060813373876, 0.05836069500887165]
+#####-----cboard参数-----#####
+quaternion_canid: 0x100
+bullet_speed_canid: 0x101
+send_canid: 0xff
+can_interface: "can0"
+
+#####-----gimbal参数-----#####
+com_port: "/dev/ttyACM0"
+# 陀螺仪是否装错, 编号012分别代表电控坐标系ypr，想换旋转轴只需要对编号进行互换即可，负号就是对当前值取负，交换完再取负
+# 上车前记得对齐电控坐标系和济瞄惯性系
+gimbal_y1: 1
+gimbal_p2: -3
+gimbal_r3: -2
+# 济瞄的惯性系  z轴往上, x轴是枪管指向
+#     x  z
+#      \ |
+#       \|
+# y_ _ _ 0   z:yaw   x:roll   y:pitch
+
+
+#####-----planner-----#####
+target_dist_error: -0.23
+target_h_error: 0.28
+fire_thresh: 0.003
+small_armor_tolerance: 0.12
+big_armor_tolerance: 0.22
+tower_and_base_armor_tolerance_: 0.10  # 26赛季前哨站和基地装甲板检测宽度
+gimbal_control_delay: 0.08
+tower_pitch_prediction_time: 0.05
+
+max_yaw_acc: 50
+Q_yaw: [9e6, 0]
+R_yaw: [1]
+
+max_pitch_acc: 100
+Q_pitch: [9e6,0]
+R_pitch: [1]

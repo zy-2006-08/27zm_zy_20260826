@@ -8,7 +8,7 @@ namespace tools
 {
   Plotter::Plotter(std::string host, uint16_t port)
   {
-    socket_ = ::socket(AF_INET, SOCK_DGRAM, 0);
+    socket_ = ::socket(AF_INET, SOCK_DGRAM, 0);//UDP
 
     destination_.sin_family = AF_INET;
     destination_.sin_port = ::htons(port);
@@ -23,5 +23,4 @@ namespace tools
     auto data = json.dump();
     ::sendto(socket_, data.c_str(), data.length(), 0, reinterpret_cast<sockaddr *>(&destination_), sizeof(destination_));
   }
-
 }  // namespace tools

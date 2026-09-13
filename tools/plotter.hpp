@@ -12,7 +12,8 @@ namespace tools
   class Plotter
   {
     public:
-    Plotter(std::string host = "127.0.0.1", uint16_t port = 9870);
+    // Plotter(std::string host = "127.0.0.1", uint16_t port = 9870);
+    Plotter(std::string host = "100.94.91.114", uint16_t port = 9870);    
 
     ~Plotter();
 

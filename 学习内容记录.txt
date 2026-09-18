@@ -2,6 +2,7 @@
 - xd → 192.168.200.251（局域网，同一个 WiFi 时用这个，最快）
 - xiaodiannao → 100.112.138.58（Tailscale 内网穿透，不在同一网络时用这个，超时设到 90 秒）
 忘记写提交内容就先Ctrl+W
+
 2026.9.14
 打开终端，逐行复制粘贴回车：
 # 第 1 步：进入项目目录
@@ -17,3 +18,12 @@ git merge --ff-only origin/master
 --ff-only 是安全阀：只有在你本地没有自己的提交时才会更新，否则直接报错退出，不会瞎合并搞出冲突。
 也可以偷懒一行搞定，等价于上面：
 cd /Users/zy/RM27_zimiao/27zm_zy_20260831 && git pull --ff-only
+
+2026.9.18
+git clone --depth 1 https://github.com/zy-2006-08/RM_Terminal_27.git 浅克隆
+
+克隆不卡死
+PS D:\> git config --global http.proxy http://127.0.0.1:7897
+PS D:\> git config --global http.sslverify true
+PS D:\> git clone --depth 1 https://github.com/zy-2006-08/RM_Terminal_27.git
+注意：http.proxy 只对 HTTPS 克隆生效。SSH remote (git@github.com:...) 不读这个配置。

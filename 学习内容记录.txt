@@ -27,3 +27,61 @@ PS D:\> git config --global http.proxy http://127.0.0.1:7897
 PS D:\> git config --global http.sslverify true
 PS D:\> git clone --depth 1 https://github.com/zy-2006-08/RM_Terminal_27.git
 注意：http.proxy 只对 HTTPS 克隆生效。SSH remote (git@github.com:...) 不读这个配置。
+
+2026.9.19
+只有串口，不需要接相机，排除其他干扰因素，可读串口数据
+sudo fuser -v /dev/ttyACM0 确认没有别的程序占着串口
+
+cd ~/RM27_zimiao/27zm_zy_20260826 && python3 tools/serial_monitor.py
+
+查有没有进程占着相机
+pgrep -af camera_tuning
+pgrep -af rb_auto_aim
+pgrep -af calibrate
+没输出 = 没进程占着相机
+
+看相机正反画面
+cd ~/RM27_zimiao/27zm_zy_20260826/build
+export DISPLAY=:0
+./camera_tuning
+
+f键翻转p键保存到tuning_result.yaml 最后要把配置手敲回去
+
+看波形
+
+键	        作用
+鼠标移动	十字游标跟随，图例实时显示数值（核心功能，不用暂停）
+空格	    冻结/恢复画面（冻结时数据仍在接收，不丢包）
+D	        显示/隐藏差值曲线（组内恰好 2 条时可用）
+A	        自动量程开关（关掉后视图不再自动跟着数据跑）
+R	        重置视图（恢复自动量程 + 全量程显示）
+S	        存 CSV 到当前目录
+
+先看有哪些字段可用：
+python D:\RM27_zimiao\rmplot\rmplot.py
+不给参数就是探测模式，等 6 秒列出所有字段名和当前值。实测你的程序发了 33 个字段。
+然后组合：
+# 单个变量
+python D:\RM27_zimiao\rmplot\rmplot.py ekf_x
+
+# 两个叠一个图（看跟随/对比关系）
+python D:\RM27_zimiao\rmplot\rmplot.py gimbal_pitch,plan_pitch
+
+# 三个图，每个叠两条
+python D:\RM27_zimiao\rmplot\rmplot.py gimbal_yaw,plan_yaw gimbal_pitch,plan_pitch ekf_x,ekf_y
+
+# 想看多少条都行
+python D:\RM27_zimiao\rmplot\rmplot.py ekf_x,ekf_y,ekf_z
+规则就一条：逗号连的进同一子图，空格分开的各占一个子图。子图之间 X 轴自动联动，时间对齐。
+同组内颜色固定：第 1 条蓝、第 2 条红、第 3 条绿、第 4 条黄。所以习惯上把「实际值」写前面、「目标值」写后面，多次启动颜色不变，形成肌肉记忆。
+其他参数：
+# 保留更多历史（默认 1500 点，约 33 秒 @45Hz）
+python D:\RM27_zimiao\rmplot\rmplot.py --window 5000 gimbal_yaw,plan_yaw
+
+# 换端口
+python D:\RM27_zimiao\rmplot\rmplot.py --port 45123 gimbal_yaw,plan_yaw
+
+如果电控的pitch是roll要改这里
+configs/sb_long.yaml 的两行
+gimbal_p2: 2  →  3
+gimbal_r3: 3  →  2

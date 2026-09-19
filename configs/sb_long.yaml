@@ -119,8 +119,8 @@ gain: 0.6
 gamma: 0.6
 img_gamma: 1
 vid_pid: "2ba2:4d55"
-flip: true
-mirror: true
+flip: false
+mirror: false
 
 # -1  0  0
 #  0 -1  0
@@ -180,8 +180,8 @@ camera_matrix: [2389.4067787283038, 0, 705.5905792253958, 0, 2388.045783704049, 
 distort_coeffs: [-0.017809651901004808, 0.032959052150772557, 0.00023015544913718082, -2.0367139105880875e-06, 0.41480271347536707]
 # ============================================================
 gimbal_y1: 1
-gimbal_p2: 2
-gimbal_r3: 3
+gimbal_p2: 3
+gimbal_r3: 2
 #####-----cboard参数-----#####
 quaternion_canid: 0x100
 bullet_speed_canid: 0x101

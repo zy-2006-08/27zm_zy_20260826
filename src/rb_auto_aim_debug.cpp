@@ -148,8 +148,11 @@ int main(int argc, char * argv[])
         data["fire"] = plan.fire ? 1 : 0;
         data["fired"] = fired ? 1 : 0;
 
-        data["target_yaw"] = plan.target_yaw;
-        data["target_pitch"] = plan.target_pitch;
+        // ★单位: plan.target_* 是弧度, 必须乘 57.3 转成度。
+        //   否则和同图的 plan_yaw / plan_pitch (已转度) 差 57 倍, 曲线看起来
+        //   "压在 0 附近不动", 会被误判成 MPC 参考轨迹恒为 0 / 求解器发散。
+        data["target_yaw"] = plan.target_yaw * 57.3;
+        data["target_pitch"] = plan.target_pitch * 57.3;
         data["target_z"] = target->ekf_x()[4];   //z
         data["target_vz"] = target->ekf_x()[5];  //vz
         data["tower_h1"] = target->tower_armor_hs[0];
@@ -222,7 +225,7 @@ int main(int argc, char * argv[])
     // std::cout << "Roll: " << roll_deg << std::endl;
     //画 EKF 调试信息
       if (!targets.empty())
-      {
+      { 
       target_queue.push(targets.front());//有目标的话，把第一个目标塞进信箱交给 plan_thread
 
       auto & target = targets.front();

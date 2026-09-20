@@ -1,0 +1,27 @@
+{
+  "status": "pass",
+  "artifactSha256": "f5ff8a53924cfb1bca5ab94498070530862df0900d93746a404b40f892ad9e79",
+  "artifactBytes": 811731,
+  "checks": [
+    "zh-CN locale; 11 live SVG components",
+    "Theme toggles and restores",
+    "Tracker focus opens and closes",
+    "Chinese search selects Tracker",
+    "Zoom changes viewer scale while preserving authored viewBox"
+  ],
+  "responsive": [
+    {
+      "width": 375,
+      "scrollWidth": 375
+    },
+    {
+      "width": 768,
+      "scrollWidth": 768
+    },
+    {
+      "width": 1280,
+      "scrollWidth": 1280
+    }
+  ],
+  "pageErrors": []
+}

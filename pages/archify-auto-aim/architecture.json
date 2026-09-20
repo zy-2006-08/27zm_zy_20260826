@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "自瞄架构：从相机到 STM32",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "animation": "none",
+    "viewBox": [1080, 630]
+  },
+  "components": [
+    { "id": "config", "type": "database", "label": "启动配置", "sublabel": "默认 sb_long.yaml", "pos": [40, 60], "size": [180, 70] },
+    { "id": "classifier", "type": "backend", "label": "数字分类", "sublabel": "Classifier · OpenCV DNN", "pos": [310, 60], "size": [180, 70] },
+    { "id": "solver", "type": "backend", "label": "空间解算", "sublabel": "Solver · PnP 与坐标变换", "pos": [580, 60], "size": [180, 70] },
+    { "id": "camera", "type": "external", "label": "① 相机采图", "sublabel": "Camera · 图像与时间戳", "pos": [40, 280], "size": [180, 70] },
+    { "id": "detector", "type": "backend", "label": "② 找装甲板", "sublabel": "Detector · 灯条配对", "pos": [310, 280], "size": [180, 70] },
+    { "id": "tracker", "type": "backend", "label": "③ 跟踪目标", "sublabel": "Tracker · 状态估计", "pos": [580, 280], "size": [180, 70] },
+    { "id": "mailbox", "type": "messagebus", "label": "④ 最新目标", "sublabel": "容量 1 · 覆盖旧数据", "pos": [850, 280], "size": [180, 70] },
+    { "id": "planner", "type": "backend", "label": "⑤ 规划瞄准", "sublabel": "Planner · 预测与弹道", "pos": [850, 510], "size": [180, 70] },
+    { "id": "serial", "type": "backend", "label": "⑥ 串口收发", "sublabel": "Gimbal · 460800 波特", "pos": [580, 510], "size": [180, 70] },
+    { "id": "stm32", "type": "external", "label": "⑦ STM32 电控", "sublabel": "接收控制 · 回传状态", "pos": [310, 510], "size": [180, 70] },
+    { "id": "debug", "type": "frontend", "label": "调试与记录", "sublabel": "画面叠加 · 按键 · 曲线", "pos": [40, 510], "size": [180, 70] }
+  ],
+  "connections": [
+    { "id": "config-camera", "from": "config", "to": "camera", "label": "启动参数", "variant": "dashed", "labelDy": 80 },
+    { "id": "camera-detector", "from": "camera", "to": "detector", "label": "图像", "variant": "emphasis" },
+    { "id": "detector-classifier", "from": "detector", "to": "classifier", "label": "调用分类" },
+    { "id": "detector-tracker", "from": "detector", "to": "tracker", "label": "装甲板", "variant": "emphasis" },
+    { "id": "tracker-solver", "from": "tracker", "to": "solver", "label": "调用 PnP" },
+    { "id": "tracker-mailbox", "from": "tracker", "to": "mailbox", "label": "写入", "variant": "emphasis" },
+    { "id": "mailbox-planner", "from": "mailbox", "to": "planner", "label": "跨线程读取", "variant": "emphasis", "labelDy": 80 },
+    { "id": "planner-serial", "from": "planner", "to": "serial", "label": "控制量", "variant": "emphasis" },
+    { "id": "serial-stm32", "from": "serial", "to": "stm32", "label": "TX 29 字节", "variant": "emphasis" },
+    { "id": "stm32-serial", "from": "stm32", "to": "serial", "label": "RX 29 字节", "variant": "dashed", "fromSide": "bottom", "toSide": "bottom" },
+    { "id": "camera-debug", "from": "camera", "to": "debug", "label": "画面与记录", "variant": "dashed", "labelDy": 80 }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "先沿 ① → ⑦ 看主链路", "items": ["入口：src/rb_auto_aim_debug.cpp；上排处理图像，下排独立规划并发串口。", "Tracker 调 Solver，不是 Detector 调 Solver；数字识别由 OpenCV DNN 完成。", "配置还供检测、跟踪、解算、规划与串口使用；调试也读取跟踪结果。"] },
+    { "dot": "amber", "title": "电控回传不是一根无用的回线", "items": ["RX：四元数、模式、颜色、弹速、弹丸计数；姿态供 Solver，模式/颜色供 Tracker。", "Planner 读取当前 yaw 与弹速；TX 发送控制状态、角度及其速度/加速度。", "目标位置与名称未发出；规划计算后休眠 5 ms，不等于保证 200 Hz。"] },
+    { "dot": "slate", "title": "范围与阅读入口", "items": ["此入口默认 sb_long.yaml，可用命令行选择；不能把全部配置都说成 calibration.yaml。", "YOLO 在此入口仅构造；离线 auto_aim_test.cpp 的 YOLO + Aimer 不属于本图主链路。", "本地图源与行号见 evidence.md；未验证实机，未声称公开源码链接。详读《自瞄代码导读》。"] }
+  ]
+}

@@ -74,6 +74,7 @@ SOURCES=(
     tasks/auto_aim/yolos/yolov5.cpp
     tasks/auto_aim/yolos/yolov8.cpp
     tasks/auto_aim/yolos/yolo11.cpp
+    tasks/auto_aim/yolos/yolo7.cpp
     tasks/auto_aim/solver.cpp                # PnP 位姿解算 + yaw 优化
     tasks/auto_aim/target.cpp                # 整车估计 EKF
     tasks/auto_aim/tracker.cpp               # 状态机：detecting/tracking/lost

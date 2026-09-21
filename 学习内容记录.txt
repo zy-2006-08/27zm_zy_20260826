@@ -85,3 +85,15 @@ python D:\RM27_zimiao\rmplot\rmplot.py --port 45123 gimbal_yaw,plan_yaw
 configs/sb_long.yaml 的两行
 gimbal_p2: 2  →  3
 gimbal_r3: 3  →  2
+
+2026.9.21
+UDP 的特点是：
+- 不需要等待对方确认；
+- 不会因为某个丢失的数据包而阻塞后续数据；
+- 延迟通常更低；
+- 但可能丢包、乱序、重复，画面可能出现缺帧或花屏。
+TCP 确实会：
+- 按顺序传输；
+- 检查数据有没有损坏；
+- 丢包时自动重传；
+- 尽量把数据可靠地交给对方。

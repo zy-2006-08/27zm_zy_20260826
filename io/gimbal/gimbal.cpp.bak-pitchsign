@@ -250,15 +250,7 @@ namespace io
       auto ypr = tools::eulers(q_, 2, 1, 0);
 
       float yaw = ypr[abs(gimbal_yaw2vision) - 1];
-      // ★PITCH_SIGN_TEST: 在【组装四元数之前】对 pitch 取负。
-      //   与改 yaml 的 gimbal_p2 不等价: eulers() 里 eulers[1] 由 acos 得出、与另两轴耦合,
-      //   单独翻 ypr 下标的符号不等于翻旋转方向; 这里改的是喂给 AngleAxisd(pitch, UnitY())
-      //   的量, 直接决定 R_gimbal2world_ 的 pitch 旋转方向。
-      //   基线(未改时)实测: 静止装甲板 + 手动抬云台 14 度, obs_z 漂移 range = 0.506 m,
-      //   斜率 0.036 m/deg, 恰为几何上"完全不补偿"值 0.0173 m/deg 的 2.08 倍 ——
-      //   2 倍是符号反接的特征(误差 = 真值 - (-真值) = 2*真值)。
-      //   回滚: io/gimbal/gimbal.cpp.bak-pitchsign
-      float pitch = -ypr[abs(gimbal_pitch2vision) - 1];
+      float pitch = ypr[abs(gimbal_pitch2vision) - 1];
       float roll = ypr[abs(gimbal_roll2vision) - 1];
 
       yaw = gimbal_yaw2vision > 0 ? yaw : -yaw;

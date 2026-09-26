@@ -29,7 +29,10 @@ cd "$ROOT"
 
 if [ "${1:-}" = "clean" ]; then
     rm -rf "$OUT"
-    # 连 clangd 用的软链一起收掉（只删软链，绝不碰真目录）
+    # 连 clangd 用的 DB 软链一起收掉（只删软链，绝不碰真文件）
+    [ -L "$ROOT/compile_commands.json" ] && rm -f "$ROOT/compile_commands.json"
+    # 历史遗留：早期版本会建 build -> build-mac 的目录级软链，见下方说明。
+    # 清理掉，避免它在 Linux 侧变成坏链接挡住 cmake -B build。
     [ -L "$ROOT/build" ] && rm -f "$ROOT/build"
     echo "已删除 $OUT"
     exit 0
@@ -126,22 +129,27 @@ g++ -o "$OUT/auto_aim_test" "$OUT"/obj/*.o \
 
 echo "==> 产物：$OUT/auto_aim_test"
 
-# ---- 给 clangd 建 build -> build-mac 软链 ----
-# clangd 自动搜索 compile_commands.json 时只认两个位置（实测 clangd 21）：
-#     <工程根>/compile_commands.json
+# ---- 给 clangd 在工程根建 compile_commands.json 软链 ----
+# clangd 自动搜索时只认两个位置（实测 clangd 21）：
+#     <工程根>/compile_commands.json      <- 用这个
 #     <工程根>/build/compile_commands.json
 # build-mac 这个名字它不认。而 .clangd 里刻意没写 CompilationDatabase ——
-# 那个字段一旦指向不存在的目录，clangd 会停止搜索并直接失败，
-# 曾因为它被写成 build-mac 导致小电脑上满屏假红线。
-# 所以这里用软链把 build-mac 映射成 build，两个平台共用一份 .clangd。
+# 那个字段一旦指向不存在的目录，clangd 会停止搜索并直接失败。
 #
-# build/ 和 build-mac/ 都在 .gitignore 里，软链不会进版本库。
-# 只在「不存在」或「已是软链」时动手，避免误删 Linux 上的真 build 目录。
-if [ ! -e "$ROOT/build" ] || [ -L "$ROOT/build" ]; then
-    ln -sfn "$OUT" "$ROOT/build"
-    echo "==> clangd 软链：build -> $(basename "$OUT")"
-else
-    echo "==> 跳过 clangd 软链：$ROOT/build 是真目录（Linux 构建产物？）" >&2
+# 早期版本这里建的是 build -> build-mac 的【目录级】软链，去命中第二个位置。
+# 那个做法出过事：注释里以为 .gitignore 的 build/ 能挡住它，但带斜杠是
+# 目录专用模式，挡不住符号链接（git 视其为 mode 120000 的普通文件），
+# 于是软链被提交进版本库（commit ad75477），拉到小电脑后成了指向不存在
+# 目录的坏链接，cmake -B build 无法创建 build/CMakeFiles/pkgRedirects，
+# Alt+, 编译直接失败。
+#
+# 改成软链【单个文件】到第一个位置，根治：
+#   - build/ 和 build-mac/ 各自独立，不再争抢同一个路径名
+#   - Linux 的真 build/ 目录永远不会被碰到，不需要 [ -L ] 守卫
+#   - .gitignore 已加 compile_commands.json（无斜杠），目录和软链都挡得住
+if [ -f "$OUT/compile_commands.json" ]; then
+    ln -sfn "build-mac/compile_commands.json" "$ROOT/compile_commands.json"
+    echo "==> clangd 软链：compile_commands.json -> build-mac/compile_commands.json"
 fi
 
 # compile_commands.json 不是 build.sh 生成的，缺了 clangd 只能用兜底参数

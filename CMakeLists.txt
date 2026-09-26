@@ -11,6 +11,16 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # ---------------------------------------------------------------------------
+# compile_commands.json（clangd 的编译数据库）
+# 在这里开而不是只靠 make.sh 传 -D：scripts/build_current.sh 在 build/ 未配置时
+# 会自己跑一次 cmake，那条路径没带 -DCMAKE_EXPORT_COMPILE_COMMANDS，
+# 于是首次用 Alt+, 配置出来的 build/ 里没有 DB，clangd 只能用 .clangd 的兜底
+# 参数，工程内部的 #include "tasks/..." 全部解析失败 —— 满屏假红线。
+# 写在 CMakeLists 里，make.sh 和 build_current.sh 两条路径都覆盖。
+# ---------------------------------------------------------------------------
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# ---------------------------------------------------------------------------
 # 构建类型 / Build type
 # 默认 Release（自瞄对帧率敏感，Debug 版本会慢好几倍）。
 # 想调试时无需改动本文件，命令行覆盖即可：

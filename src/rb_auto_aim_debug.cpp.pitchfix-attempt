@@ -118,34 +118,38 @@ int main(int argc, char * argv[])
 
       //   // tools::logger()->info("{},{},{}", name,tx,ty);
       // }
-      // 发串口。这是整个视觉程序唯一的输出。
       // ==================== pitch 坐标约定转换 + 行程限幅 ====================
       // 【为什么要取反】
-      // 视觉 plan.pitch 来自弹道解算 asin(...)（tools/trajectory.cpp）, 抬枪补偿重力,
-      // 约定【正 = 抬头】。电控 pitch->Target_Angle 与 GIMBAL_088.realAngle.roll 同系,
-      // 实测标定为:
-      //     最低 = 水平    roll = +0.05      <- 压不下去, 水平即下极限
-      //     最高(抬起)     roll = -38.60     <- 越抬数值越小
-      // 即电控【负 = 抬头】, 可用区间 [-38.6, +0.05]。两边符号相反。
+      // 视觉端 plan.pitch 来自弹道解算 tools::Trajectory 的 asin(...)（trajectory.cpp:147）,
+      // 抬枪补偿重力下坠, 所以约定是【正 = 抬头】。
+      // 电控端 pitch->Target_Angle 直接与 GIMBAL_088.realAngle.roll 做差
+      //（SMC_Tick: error = angle - Target_angle）, 而 realAngle.roll 实测标定为:
+      //       最低(近水平)  roll = +0.05      最高  roll = -38.60
+      // 即电控约定是【负 = 抬头】, 可达范围 -38.6 ~ +1.1 度。
       //
-      // 未取反时发出的是 +8.11deg（见日志 "[Gimbal] mode ... pitch=8.11deg"）, 在电控看来
-      // 是压低 8.11 度且超出 +0.05 上限 -> 云台顶死在水平位, 现象即【yaw 跟随、pitch 停在 0 度】。
+      // 两边符号相反。原先 app_gimbal.cpp:541 裸赋值 Target_Angle = plan.pitch * 180/PI,
+      // 等于把"抬头 8.96 度"当成"压低 8.96 度"执行, 且超出 +1.1 的下限 7.9 度 ——
+      // 云台被一路顶死在最低机械限位, 现象就是【开自瞄后 yaw 跟随、pitch 完全不动】。
+      // 同时这也是 plan_pitch 与 gimbal_pitch 之间那个永不闭合的 8.46 度差值的来源。
+      //（对比: yaw 走了 ZM_Angle_Deal() 做坐标换算, pitch 缺了这一步。）
       //
-      // 【vel/acc 必须一起取反】电控 SMC 内 d_error = angle_vel - Target_angle_vel,
-      // 只反位置会让前馈朝位置反方向推, 比不反更糟。三者必须同号。
+      // 【为什么 vel/acc 必须一起取反】
+      // 电控 SMC 里 d_error = angle_vel - Target_angle_vel。只取反位置而不取反前馈,
+      // 会让速度/加速度前馈朝位置的反方向推, 比不取反更糟。三个量必须同号。
       float tx_pitch = -plan.pitch;
       float tx_pitch_vel = -plan.pitch_vel;
       float tx_pitch_acc = -plan.pitch_acc;
 
-      // 【行程限幅】按实测机械行程钳位(度 -> 弧度), 从源头杜绝越界指令。
-      // 电控 stateNORMAL 有 LIMIT(Target_Angle, -38.5f, 1.2f), 但 stateAUTO_ZM 没有,
-      // 所以这道保护必须在视觉侧做。上极限取 0.0 而非 +1.2: 实测水平就是下极限。
-      constexpr float PITCH_MIN_RAD = -38.0f / 57.2958f;  // 抬头极限(留 0.6 度余量)
-      constexpr float PITCH_MAX_RAD = 0.0f / 57.2958f;    // 下极限 = 水平
+      // 【行程限幅】按实测机械行程钳位, 从源头杜绝越界指令(单位: 度 -> 弧度)。
+      // 留约 0.5 度余量, 避免持续顶在机械限位上硬撞。
+      // 电控 stateNORMAL 有 LIMIT(Target_Angle, -38.5f, 1.2f), 但 stateAUTO_ZM 一个都没有,
+      // 所以这道保护必须在视觉侧做。
+      constexpr float PITCH_MIN_RAD = -38.0f / 57.2958f;  // 抬头极限
+      constexpr float PITCH_MAX_RAD = 0.7f / 57.2958f;    // 压低极限
       if (tx_pitch < PITCH_MIN_RAD)
       {
         tx_pitch = PITCH_MIN_RAD;
-        tx_pitch_vel = 0.0f;  // 钳位时清零前馈, 否则前馈继续推向限位外
+        tx_pitch_vel = 0.0f;  // 钳位时清零前馈, 否则前馈会继续推向限位外
         tx_pitch_acc = 0.0f;
       }
       if (tx_pitch > PITCH_MAX_RAD)
@@ -155,13 +159,14 @@ int main(int argc, char * argv[])
         tx_pitch_acc = 0.0f;
       }
 
-      // 限幅是否在生效。持续刷屏说明视觉要求的角度本身超出行程, 那是标定/pitch_offset
-      // /目标高度解算的问题, 不是这段转换的问题。
+      // 限幅是否在生效。若持续刷屏, 说明视觉要求的角度本身就超出云台行程,
+      // 那是标定 / pitch_offset / 目标高度解算的问题, 不是这段转换的问题。
       if (plan.control && (-plan.pitch < PITCH_MIN_RAD || -plan.pitch > PITCH_MAX_RAD))
         tools::logger()->warn("[pitch] 越界被限幅: 请求 {:.2f} deg, 实发 {:.2f} deg", -plan.pitch * 57.2958f, tx_pitch * 57.2958f);
 
       // 发串口。这是整个视觉程序唯一的输出。
-      // 注意: 末尾 tx / ty / name 是原有的(已被电控协议忽略的)参数, 与 tx_pitch 无关。
+      // 注意: 末尾的 tx / ty / name 是原有的(已被电控协议忽略的)参数, 与上面新增的
+      // tx_pitch 无关, 只是名字相近, 别弄混。
       gimbal.sb_send(plan.control, plan.fire, plan.yaw, plan.yaw_vel, plan.yaw_acc, tx_pitch, tx_pitch_vel, tx_pitch_acc, tx, ty, name);
       // 边沿检测，跟你检测按键上升沿一个套路：子弹累计计数变大了，说明刚打出去一发。fired 只用于画曲线，方便你对比"下令开火"和"实际打出"之间的延迟。
       auto fired = gs.bullet_count > last_bullet_count;
@@ -175,7 +180,7 @@ int main(int argc, char * argv[])
       data["gimbal_pitch"] = gs.pitch;
       data["gimbal_pitch_vel"] = gs.pitch_vel;
       data["q2yaw"] = gs.q2yaw;
-      data["q2pitch"] = gs.pitch;
+      data["q2pitch"] = gs.q2pitch;  // 原先误写为 gs.pitch, 导致这条曲线画的其实是 gimbal_pitch
 
       if (target.has_value())
       {
@@ -184,9 +189,9 @@ int main(int argc, char * argv[])
         data["plan_yaw_vel"] = plan.yaw_vel;
         data["plan_yaw_acc"] = plan.yaw_acc;
 
-        data["plan_pitch"] = plan.pitch * 57.3;  // 弹道原始值（正 = 抬头）
-        // 实际发给电控的值（负 = 抬头, 已取反并限幅）。第一步就看这两条:
-        // plan_pitch 应为 +8 左右, tx_pitch 应为 -8 左右。
+        data["plan_pitch"] = plan.pitch * 57.3;  // 弹道解算原始值（正 = 抬头）
+        // 实际发给电控的值（负 = 抬头, 已取反并限幅）。
+        // 上车第一步就看这两条: plan_pitch 应为 +8.9 左右, tx_pitch 应为 -8.9 左右。
         data["tx_pitch"] = tx_pitch * 57.3;
         data["plan_pitch_vel"] = plan.pitch_vel;
         data["plan_pitch_acc"] = plan.pitch_acc;
@@ -355,28 +360,6 @@ int main(int argc, char * argv[])
       Eigen::Vector4d aim_xyza = planner.debug_xyza;
       auto image_points = solver.reproject_armor(aim_xyza.head(3), aim_xyza[3], target.armor_type, target.name);
       tools::draw_points(img, image_points, {0, 0, 255});
-
-      // ===== PROBE (临时诊断, 可整段删除) =====
-      // 目的: 定量分辨红框飘移的来源。
-      //   obs_* = armor_xyza_list()[last_id] —— 当前帧 EKF 观测位置, 就是淡蓝框画的点
-      //   aim_* = planner.debug_xyza        —— 红框画的点。注意它在一次 rbplan 里会被
-      //                                        rbget_trajectory 覆盖 102 次, 最终留下的是
-      //                                        目标被 predict() 外推到 +0.5s 后的位置。
-      // 静止装甲板 + 手动转云台时:
-      //   若 obs_* 稳定而 aim_* 飘  -> 解算(R_gimbal2world)没问题, 是 predict 外推放大噪声
-      //   若 obs_* 也跟着飘        -> 解算链本身有问题(轴/符号/时间戳)
-      {
-        const auto & obs = armor_xyza_list[target.last_id];
-        auto gp = tools::eulers(q, 2, 1, 0)[1] * 57.2958;  // 本帧使用的云台 pitch(度)
-        tools::logger()->info(
-          "PROBE gp={:.2f} obs=({:.4f},{:.4f},{:.4f},a={:.2f}) aim=({:.4f},{:.4f},{:.4f},a={:.2f}) "
-          "d_obs_aim=({:.4f},{:.4f},{:.4f}) vyaw={:.3f} r={:.3f} last_id={}",
-          gp, obs(0), obs(1), obs(2), obs(3) * 57.2958,
-          aim_xyza(0), aim_xyza(1), aim_xyza(2), aim_xyza(3) * 57.2958,
-          aim_xyza(0) - obs(0), aim_xyza(1) - obs(1), aim_xyza(2) - obs(2),
-          target.ekf_x()(7), target.ekf_x()(8), target.last_id);
-      }
-      // ===== /PROBE =====
     }
     // 所以画面上的颜色约定是：
     // - 淡蓝框 = 所有装甲板的估计位置

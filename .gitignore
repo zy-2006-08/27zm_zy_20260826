@@ -1,10 +1,21 @@
 # ---------------------------------------------------------------------------
 # Build output / CMake tree (created by `cmake -B build`, see make.sh)
+#
+# 刻意不写尾部斜杠。带斜杠是 gitignore 的目录专用模式，只匹配目录条目，
+# 挡不住同名的符号链接（git 视其为 mode 120000 的普通文件）。
+# 曾因此让 Mac 上 mac/build.sh 建的 build -> build-mac 软链被提交进版本库
+# （commit ad75477），拉到小电脑后变成指向不存在目录的坏链接，
+# cmake 无法创建 build/CMakeFiles/pkgRedirects，Alt+, 编译直接失败。
+# 去掉斜杠后目录和符号链接都会被忽略。
 # ---------------------------------------------------------------------------
-build/
+build
 
 # Mac native build output (created by mac/build.sh)
-build-mac/
+build-mac
+
+# clangd 的 compile_commands.json 软链：由 make.sh / mac/build.sh 在工程根创建，
+# 各平台指向自己的产物目录。平台专属的本地产物，绝不进版本库。
+compile_commands.json
 
 # ---------------------------------------------------------------------------
 # Runtime-generated directories and files.

@@ -163,60 +163,9 @@ int main(int argc, char * argv[])
       // 发串口。这是整个视觉程序唯一的输出。
       // 注意: 末尾 tx / ty / name 是原有的(已被电控协议忽略的)参数, 与 tx_pitch 无关。
       gimbal.sb_send(plan.control, plan.fire, plan.yaw, plan.yaw_vel, plan.yaw_acc, tx_pitch, tx_pitch_vel, tx_pitch_acc, tx, ty, name);
-
-      // ===== CMDPROBE (临时诊断, 可整段删除) =====
-      // 50Hz 记录"发出去的指令"和"云台实际角度", 用来判断震动是视觉乱发还是电控跟不上。
-      //   cmd_p  = 发给电控的 pitch(度, 电控约定 负=抬头)   gs_p = 云台实际 pitch(度, 视觉约定 正=抬头)
-      //   两者应满足 gs_p ≈ -cmd_p。cmd_pv / cmd_pa 为速度/加速度前馈(度/s, 度/s^2)。
-      {
-        static int cmd_cnt = 0;
-        if (plan.control && (++cmd_cnt % 4 == 0))
-          tools::logger()->info(
-            "CMDPROBE cmd_p={:.2f} cmd_pv={:.1f} cmd_pa={:.0f} cmd_y={:.2f} cmd_yv={:.1f} gs_p={:.2f} gs_y={:.2f} fire={}",
-            tx_pitch * 57.2958f, tx_pitch_vel * 57.2958f, tx_pitch_acc * 57.2958f, plan.yaw * 57.2958f,
-            plan.yaw_vel * 57.2958f, gs.pitch, gs.yaw, plan.fire ? 1 : 0);
-      }
-      // ===== /CMDPROBE =====
       // 边沿检测，跟你检测按键上升沿一个套路：子弹累计计数变大了，说明刚打出去一发。fired 只用于画曲线，方便你对比"下令开火"和"实际打出"之间的延迟。
       auto fired = gs.bullet_count > last_bullet_count;
       last_bullet_count = gs.bullet_count;
-
-      // ===== FIREPROBE (临时诊断, 可整段删除) =====
-      // 电控在 mode 从 1 变 2 的【上升沿】拨一发(Shoot.cpp UD_BP_FIRE), 所以这里在同一个上升沿记一条 CMD。
-      // gs.bullet_count 增加时再记一条 SHOT(若电控/裁判系统不回传弹数, 就只有 CMD)。
-      //   face      = 开火瞬间, 最接近正对我方的那块板偏离正对位置多少度(0 = 正对, 负 = 正在转来, 正 = 已转过)
-      //   yaw_err   = 指令 yaw - 云台实际 yaw (度)
-      //   pitch_err = 指令 pitch 与云台实际 pitch 之差 (度, 已换算到同一约定)
-      // 不装弹也能用: 看 face 的分布判断开火时机, 看 yaw_err/pitch_err 判断开火时云台是否已到位。
-      {
-        static bool last_fire = false;
-        const bool fire_now = plan.control && plan.fire;
-        const bool fire_edge = fire_now && !last_fire;
-        last_fire = fire_now;
-        if ((fire_edge || fired) && target.has_value())
-        {
-          const auto ex = target->ekf_x();
-          const double cazim = std::atan2(ex[2], ex[0]);
-          const auto list = target->armor_xyza_list();
-          double best = 1e9;
-          int best_i = -1;
-          for (int i = 0; i < static_cast<int>(list.size()); i++)
-          {
-            const double d = tools::limit_rad(list[i][3] - cazim);
-            if (std::abs(d) < std::abs(best))
-            {
-              best = d;
-              best_i = i;
-            }
-          }
-          const double yaw_err = tools::limit_rad(plan.yaw - gs.yaw / 57.2958) * 57.2958;
-          const double pitch_err = tx_pitch * 57.2958 + gs.pitch;
-          tools::logger()->info(
-            "FIREPROBE {} face={:.1f} id={} yaw_err={:.2f} pitch_err={:.2f} vyaw={:.2f} r={:.3f} bullets={}",
-            fire_edge ? "CMD" : "SHOT", best * 57.2958, best_i, yaw_err, pitch_err, ex[7], ex[8], gs.bullet_count);
-        }
-      }
-      // ===== /FIREPROBE =====
 
       nlohmann::json data;
       data["t"] = tools::delta_time(std::chrono::steady_clock::now(), t0);
@@ -512,7 +461,7 @@ int main(int argc, char * argv[])
     // - 黄线 = 速度方向
     // - 绿线 = 自转角速度大小
     cv::resize(img, img, {}, 0.5, 0.5);  // 显示时缩小图片尺寸
-    // cv::imshow("reprojection", img);
+    cv::imshow("reprojection", img);
     auto key = cv::waitKey(1);//这行有两个作用，第二个很多人不知道：
     // 等 1 毫秒看有没有按键，返回按键的 ASCII 码（没按返回 -1）
     // 它同时负责刷新窗口。OpenCV 的 imshow 只是提交图像，真正的绘制发生在 waitKey 里。没有 waitKey，窗口会一片空白或卡死。 这是 OpenCV 的固定套路：imshow 后面必须跟 waitKey。

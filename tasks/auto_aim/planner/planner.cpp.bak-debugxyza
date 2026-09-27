@@ -27,7 +27,6 @@ namespace auto_aim
     tower_and_base_armor_tolerance_ = tools::read<double>(yaml, "tower_and_base_armor_tolerance_");
     gimbal_control_delay = tools::read<double>(yaml, "gimbal_control_delay");
     tower_pitch_prediction_time_ = tools::read<double>(yaml, "tower_pitch_prediction_time");
-    leaving_angle_ = tools::read<double>(yaml, "leaving_angle") / 57.3;
 
     setup_yaw_solver(config_path);
     setup_pitch_solver(config_path);
@@ -411,52 +410,6 @@ namespace auto_aim
     plan.pitch_vel = pitch_solver_->work->x(1, HALF_HORIZON);
     plan.pitch_acc = pitch_solver_->work->u(0, HALF_HORIZON);
 
-    // ★2026-09-27: 修正 debug_xyza（画面红框）显示的是错误时刻的瞄准点。
-    //
-    // 【原来的问题】debug_xyza 在 rbaim() 内被赋值, 而上面的 rbget_trajectory()
-    //   会把 target 从 -0.51s 一路 predict 到 +0.5s, 每步都调一次 rbaim() ——
-    //   一次 rbplan() 里 rbaim() 被调 102 次, debug_xyza 被覆盖 102 次,
-    //   最终残留的是【目标被预测到 +0.5 秒之后】的位置。
-    //   但 MPC 实际采用的是 HALF_HORIZON（轨迹中点, 即"当前应瞄时刻"）,
-    //   所以红框画的点和真正发给电控的指令根本不对应。
-    //
-    // 【实测后果】小陀螺靶 vyaw 约 -3.5 rad/s, 0.5s 转过约 -100 度,
-    //   正好跨过一块板(四板间隔 90 度), 红框就跳到另一块板上。
-    //   本靶标是"两高两低"两种高度, 于是 aim_z 相对 obs_z 直接变号:
-    //   obs_z 约 +0.15 而 aim_z 约 -0.30。日志里 43.8% 的帧 |aim-obs| > 50cm,
-    //   平均朝向差 17.8 度 —— 看起来就是"红框乱飞"。
-    //
-    // 【修法】MPC 求解完成后, 用函数入口那份已 predict(fly_time) 的 target 副本
-    //   再调一次 rbaim(), 让 debug_xyza 落在真正被采用的时刻上。
-    //   rbaim() 的返回值丢弃, 只要它对 debug_xyza 的副作用。
-    //
-    // ⚠️ 纯可视化修正: plan.* 在上面已全部取完, 不改变任何发给电控的量。
-    //    回滚见 planner.cpp.bak-debugxyza。
-    {
-      Target target_now = target;
-      rbaim(target_now, bullet_speed);
-    }
-
-    // ★2026-09-27 反陀螺模式绕过 MPC, 直接发瞄准点, 速度/加速度前馈置 0。
-    //
-    // 【为什么】反陀螺时 pitch 参考是两层高度之间的方波(每块板切一次, 约 3.4 度),
-    //   MPC 参数 Q=9e6 / R=1 近似 bang-bang, 每个台阶都会输出最大加速度和速度脉冲,
-    //   这些前馈直接进电控 SMC(速度项增益很大), 对方波参考毫无意义。
-    //   实测开自瞄后视觉发出的 pitch 很干净(-4.8 / -8.1 交替), 云台却摆到 +14.5 度、
-    //   又撞到水平下限位, 远超指令范围 —— 先排除前馈这个嫌疑。
-    // 【做法】与 rbHeroplan() 一致: 位置用 rbaim() 的直接结果(已在上面 predict(fly_time)),
-    //   vel = acc = 0, 让电控自己的位置环去走台阶。
-    // 低速(|vyaw| < 90deg/s)仍走 MPC, 不受影响。回滚: planner.cpp.bak-spinbypass
-    if (std::abs(target.ekf_x()(7)) >= 90. / 57.3)
-    {
-      plan.yaw = yaw_pitch(0);
-      plan.yaw_vel = 0;
-      plan.yaw_acc = 0;
-      plan.pitch = yaw_pitch(1);
-      plan.pitch_vel = 0;
-      plan.pitch_acc = 0;
-    }
-
     // 前哨站迭代限制
     if (target.name == ArmorName::outpost)
     {
@@ -760,59 +713,6 @@ namespace auto_aim
       min_dist = armor_xyza_list[target.last_id].head<2>().norm();
       xyz = armor_xyza_list[target.last_id].head<3>();
       yaw = armor_xyza_list[target.last_id](3);
-    }
-
-    // ★2026-09-27 反陀螺(第二版): |vyaw| >= 90deg/s 时 yaw 固定, pitch 按"下一块转到正面的板"选高度。
-    //
-    // 【为什么不能逐块追板】实测 6020 靶 vyaw 约 -5.5 rad/s(315 deg/s), 四块板每 0.29s 换一块。
-    //   原逻辑落回"水平距离最近的板", yaw 每 0.29s 甩约 7 度、pitch 在两层高度间跳,
-    //   MPC 又近似 bang-bang(Q/R=9e6) -> 云台狂震。
-    //
-    // 【为什么第一版(瞄中心 + 高度取 x[4])也不行】
-    //   x[4] 只是 id 0/2 那一层的高度。EKF 关联时两层板的 id 奇偶会对调,
-    //   x[4] 就在两层之间被来回拉并过冲, 实测发出的 pitch 在 0 度(限幅) 和 -10 度之间每 0.45s 跳一次。
-    //   而且只瞄一层, 另一层的板永远打不到。
-    //
-    // 【本版做法】
-    //   yaw  : 瞄"车中心 - r * 指向我方单位向量", 即板正对我方时经过的点, 云台 yaw 基本不动。
-    //   pitch: 取【下一块要转到正对位置的那块板】自己的 z(armor_xyza_list[i][2]),
-    //          高板来就瞄高、低板来就瞄低 —— 两层都打。用每块板自己的 z,
-    //          所以即使 EKF 把两层 id 对调, 瞄的高度仍跟随真实那块板。
-    //   换板 : d = (板朝向 - 中心方位) * sign(vyaw), d<0 正在转来, d=0 正对, d>0 已转过。
-    //          只在 d <= leaving_angle 的板里取 d 最大的那块(即还没转离、最靠前的那块)。
-    //          当前板转过正对 leaving_angle(yaml 20 度)就切到下一块, 下一块此时在 20-90=-70 度,
-    //          到进入可打范围(约 -30 度)前 pitch 有约 40/315 = 0.13s 调整到位。
-    //   注意: rbplan 在调 rbaim 之前已 predict(fly_time), 所以这里的板朝向是【子弹到达时刻】的。
-    //
-    // 回滚: planner.cpp.bak-antispin2 / planner.hpp.bak-antispin2
-    if (abs_vyaw >= 90. / 57.3)
-    {
-      const double cx = ekf_x[0];
-      const double cy = ekf_x[2];
-      const double center_azim = std::atan2(cy, cx);
-      const double spin_sign = ekf_x(7) > 0 ? 1.0 : -1.0;
-
-      int best = -1;
-      double best_d = -1e10;
-      for (int i = 0; i < static_cast<int>(armor_num); i++)
-      {
-        double d = tools::limit_rad(armor_xyza_list[i][3] - center_azim) * spin_sign;
-        if (d > leaving_angle_) continue;  // 已转离正对位置超过 leaving_angle, 不再瞄
-        if (d > best_d)
-        {
-          best_d = d;
-          best = i;
-        }
-      }
-
-      if (best >= 0)
-      {
-        const auto & p = armor_xyza_list[best];
-        const double r_i = std::hypot(p[0] - cx, p[1] - cy);  // 该板自身半径(两层半径可能不同)
-        xyz = Eigen::Vector3d(cx - r_i * std::cos(center_azim), cy - r_i * std::sin(center_azim), p[2]);
-        min_dist = xyz.head<2>().norm();
-        yaw = center_azim;  // 仅用于画面显示: 正对我方的板面朝向
-      }
     }
 
     debug_xyza = Eigen::Vector4d(xyz.x(), xyz.y(), xyz.z(), yaw);

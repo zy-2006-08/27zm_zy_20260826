@@ -93,7 +93,6 @@ namespace auto_aim
     double tower_and_base_armor_tolerance_;
     double gimbal_control_delay;
     double tower_pitch_prediction_time_;
-    double leaving_angle_;  // 反陀螺: 当前板转过正对位置多少度后切到下一块(rad), 读 yaml leaving_angle
 
     TinySolver * yaw_solver_;
     TinySolver * pitch_solver_;

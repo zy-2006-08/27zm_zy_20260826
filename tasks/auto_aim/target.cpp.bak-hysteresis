@@ -361,27 +361,7 @@ namespace auto_aim
       // 但原先写的是 0.711（自由度 4 的 5% 分位，方向刚好相反），已改回 9.488——见那里的注释。
       id = best_id;
       double CHI_SQ_THRESHOLD = 9.488;
-      // ★2026-09-27 修正: 5.0 -> 1.0。原值导致 last_id 永久锁死在 0, 从不换板。
-      //
-      // 【为什么 5.0 等于禁用换板】
-      // min_mahalanobis_dist 是所有候选里的最小值, 所以天然有
-      //     min_mahalanobis_dist <= md_list[last_id]
-      // 于是换板条件 (id = best_id 生效) 实际要求:
-      //     md_list[last_id] - min_mahalanobis_dist >= HYSTERESIS_MARGIN
-      // 而外层还要求 md_list[last_id] < CHI_SQ_THRESHOLD = 9.488。
-      // 两者一联立, margin=5.0 时只有当 md_list[last_id] 落在 [5.0, 9.488) 这个
-      // 窄窗口里才可能换板 —— margin 占掉了阈值的 53%。
-      // 但 EKF 稳定跟踪时 md_list[last_id] 通常只有 0~2, 永远进不了那个窗口。
-      //
-      // 【实测证据】瞄旋转的四块装甲板, 1820 帧里 last_id 切换 0 次, 恒为 0。
-      // 后果是 planner.cpp:711-715 的 rbaim() 永远瞄 armor_xyza_list[0],
-      // 那块板转到车背面时红框就飞出去 —— 即"reprojection 很不正常"。
-      // 同时 EKF 被迫用 yaw 状态去拟合一块实际在移动的板, vyaw 被拽得乱跳
-      // (实测 min=-3.26 max=+6.81, 匀速陀螺不该跨零点)。
-      //
-      // 1.0 量级留有防抖能力(仍能压住两块板马氏距离接近时的逐帧跳变),
-      // 又不会把可切换区间压没。若改后出现每帧乱跳, 调到 2.0。
-      double HYSTERESIS_MARGIN = 1.0;
+      double HYSTERESIS_MARGIN = 5.0;
 
       if (md_list[last_id] < CHI_SQ_THRESHOLD)
       {
@@ -556,14 +536,7 @@ namespace auto_aim
   {
     auto r_ok = ekf_.x[8] > 0.05 && ekf_.x[8] < 0.5;
     auto l_ok = ekf_.x[8] + ekf_.x[9] > 0.05 && ekf_.x[8] + ekf_.x[9] < 0.5;
-    // ★2026-09-27: 两层装甲板高度差 x[10] 也纳入发散判断。
-    //   实测云台狂震后, 两层板的 id 奇偶被关联错, x[4] 与 x[10] 被拉开:
-    //   两层瞄准高度从 0.12 / 0.25 变成 -0.08 / 0.52(x[10] 约 0.6, 真值约 0.13),
-    //   而且之后不会自己恢复 —— 这就是"关自瞄后框框乱了"。
-    //   原来只检查半径 r / l, 这种发散判不出来, tracker 永远不重建。
-    //   阈值 0.3m: 正常平衡步兵/本靶标约 0.1~0.15, 前哨站 x[10]=0.10。
-    auto dz_ok = std::abs(ekf_.x[10]) < 0.3;
-    if (r_ok && l_ok && dz_ok) return false;
+    if (r_ok && l_ok) return false;
     return true;
   }
 

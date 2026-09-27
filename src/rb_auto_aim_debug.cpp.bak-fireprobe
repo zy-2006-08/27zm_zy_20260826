@@ -181,43 +181,6 @@ int main(int argc, char * argv[])
       auto fired = gs.bullet_count > last_bullet_count;
       last_bullet_count = gs.bullet_count;
 
-      // ===== FIREPROBE (临时诊断, 可整段删除) =====
-      // 电控在 mode 从 1 变 2 的【上升沿】拨一发(Shoot.cpp UD_BP_FIRE), 所以这里在同一个上升沿记一条 CMD。
-      // gs.bullet_count 增加时再记一条 SHOT(若电控/裁判系统不回传弹数, 就只有 CMD)。
-      //   face      = 开火瞬间, 最接近正对我方的那块板偏离正对位置多少度(0 = 正对, 负 = 正在转来, 正 = 已转过)
-      //   yaw_err   = 指令 yaw - 云台实际 yaw (度)
-      //   pitch_err = 指令 pitch 与云台实际 pitch 之差 (度, 已换算到同一约定)
-      // 不装弹也能用: 看 face 的分布判断开火时机, 看 yaw_err/pitch_err 判断开火时云台是否已到位。
-      {
-        static bool last_fire = false;
-        const bool fire_now = plan.control && plan.fire;
-        const bool fire_edge = fire_now && !last_fire;
-        last_fire = fire_now;
-        if ((fire_edge || fired) && target.has_value())
-        {
-          const auto ex = target->ekf_x();
-          const double cazim = std::atan2(ex[2], ex[0]);
-          const auto list = target->armor_xyza_list();
-          double best = 1e9;
-          int best_i = -1;
-          for (int i = 0; i < static_cast<int>(list.size()); i++)
-          {
-            const double d = tools::limit_rad(list[i][3] - cazim);
-            if (std::abs(d) < std::abs(best))
-            {
-              best = d;
-              best_i = i;
-            }
-          }
-          const double yaw_err = tools::limit_rad(plan.yaw - gs.yaw / 57.2958) * 57.2958;
-          const double pitch_err = tx_pitch * 57.2958 + gs.pitch;
-          tools::logger()->info(
-            "FIREPROBE {} face={:.1f} id={} yaw_err={:.2f} pitch_err={:.2f} vyaw={:.2f} r={:.3f} bullets={}",
-            fire_edge ? "CMD" : "SHOT", best * 57.2958, best_i, yaw_err, pitch_err, ex[7], ex[8], gs.bullet_count);
-        }
-      }
-      // ===== /FIREPROBE =====
-
       nlohmann::json data;
       data["t"] = tools::delta_time(std::chrono::steady_clock::now(), t0);
 
@@ -512,7 +475,7 @@ int main(int argc, char * argv[])
     // - 黄线 = 速度方向
     // - 绿线 = 自转角速度大小
     cv::resize(img, img, {}, 0.5, 0.5);  // 显示时缩小图片尺寸
-    // cv::imshow("reprojection", img);
+    cv::imshow("reprojection", img);
     auto key = cv::waitKey(1);//这行有两个作用，第二个很多人不知道：
     // 等 1 毫秒看有没有按键，返回按键的 ASCII 码（没按返回 -1）
     // 它同时负责刷新窗口。OpenCV 的 imshow 只是提交图像，真正的绘制发生在 waitKey 里。没有 waitKey，窗口会一片空白或卡死。 这是 OpenCV 的固定套路：imshow 后面必须跟 waitKey。

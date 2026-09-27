@@ -163,60 +163,9 @@ int main(int argc, char * argv[])
       // 发串口。这是整个视觉程序唯一的输出。
       // 注意: 末尾 tx / ty / name 是原有的(已被电控协议忽略的)参数, 与 tx_pitch 无关。
       gimbal.sb_send(plan.control, plan.fire, plan.yaw, plan.yaw_vel, plan.yaw_acc, tx_pitch, tx_pitch_vel, tx_pitch_acc, tx, ty, name);
-
-      // ===== CMDPROBE (临时诊断, 可整段删除) =====
-      // 50Hz 记录"发出去的指令"和"云台实际角度", 用来判断震动是视觉乱发还是电控跟不上。
-      //   cmd_p  = 发给电控的 pitch(度, 电控约定 负=抬头)   gs_p = 云台实际 pitch(度, 视觉约定 正=抬头)
-      //   两者应满足 gs_p ≈ -cmd_p。cmd_pv / cmd_pa 为速度/加速度前馈(度/s, 度/s^2)。
-      {
-        static int cmd_cnt = 0;
-        if (plan.control && (++cmd_cnt % 4 == 0))
-          tools::logger()->info(
-            "CMDPROBE cmd_p={:.2f} cmd_pv={:.1f} cmd_pa={:.0f} cmd_y={:.2f} cmd_yv={:.1f} gs_p={:.2f} gs_y={:.2f} fire={}",
-            tx_pitch * 57.2958f, tx_pitch_vel * 57.2958f, tx_pitch_acc * 57.2958f, plan.yaw * 57.2958f,
-            plan.yaw_vel * 57.2958f, gs.pitch, gs.yaw, plan.fire ? 1 : 0);
-      }
-      // ===== /CMDPROBE =====
       // 边沿检测，跟你检测按键上升沿一个套路：子弹累计计数变大了，说明刚打出去一发。fired 只用于画曲线，方便你对比"下令开火"和"实际打出"之间的延迟。
       auto fired = gs.bullet_count > last_bullet_count;
       last_bullet_count = gs.bullet_count;
-
-      // ===== FIREPROBE (临时诊断, 可整段删除) =====
-      // 电控在 mode 从 1 变 2 的【上升沿】拨一发(Shoot.cpp UD_BP_FIRE), 所以这里在同一个上升沿记一条 CMD。
-      // gs.bullet_count 增加时再记一条 SHOT(若电控/裁判系统不回传弹数, 就只有 CMD)。
-      //   face      = 开火瞬间, 最接近正对我方的那块板偏离正对位置多少度(0 = 正对, 负 = 正在转来, 正 = 已转过)
-      //   yaw_err   = 指令 yaw - 云台实际 yaw (度)
-      //   pitch_err = 指令 pitch 与云台实际 pitch 之差 (度, 已换算到同一约定)
-      // 不装弹也能用: 看 face 的分布判断开火时机, 看 yaw_err/pitch_err 判断开火时云台是否已到位。
-      {
-        static bool last_fire = false;
-        const bool fire_now = plan.control && plan.fire;
-        const bool fire_edge = fire_now && !last_fire;
-        last_fire = fire_now;
-        if ((fire_edge || fired) && target.has_value())
-        {
-          const auto ex = target->ekf_x();
-          const double cazim = std::atan2(ex[2], ex[0]);
-          const auto list = target->armor_xyza_list();
-          double best = 1e9;
-          int best_i = -1;
-          for (int i = 0; i < static_cast<int>(list.size()); i++)
-          {
-            const double d = tools::limit_rad(list[i][3] - cazim);
-            if (std::abs(d) < std::abs(best))
-            {
-              best = d;
-              best_i = i;
-            }
-          }
-          const double yaw_err = tools::limit_rad(plan.yaw - gs.yaw / 57.2958) * 57.2958;
-          const double pitch_err = tx_pitch * 57.2958 + gs.pitch;
-          tools::logger()->info(
-            "FIREPROBE {} face={:.1f} id={} yaw_err={:.2f} pitch_err={:.2f} vyaw={:.2f} r={:.3f} bullets={}",
-            fire_edge ? "CMD" : "SHOT", best * 57.2958, best_i, yaw_err, pitch_err, ex[7], ex[8], gs.bullet_count);
-        }
-      }
-      // ===== /FIREPROBE =====
 
       nlohmann::json data;
       data["t"] = tools::delta_time(std::chrono::steady_clock::now(), t0);
@@ -295,84 +244,8 @@ int main(int argc, char * argv[])
                                    // R_gimbal2world = "从云台坐标系到世界坐标系的旋转矩阵"。命名规范是 R_A2B 表示"把 A 系的向量转到 B 系"。
                                    // 为什么必须在 detect 之前：detect → 内部调 solver 做 PnP → solver 用当前设的 R 转世界系。如果先 detect 再设 R，用的就是上一帧的姿态，云台转得快时误差巨大。
     // ★上场跑的是传统CV，不是 YOLO。上面构造的 yolo 对象在本文件中从未被调用。
-    // ★2026-09-27: 由传统CV 切换为 YOLOv8 神经网络识别。
-    //
-    // 【为什么换】实测传统CV 在旋转的四块装甲板上识别率只有 30~40%,
-    //   且从未出现 n>=2(四块板转动时几何上必然有角度能同时看到两块) ——
-    //   28 个 2 秒统计窗口里"同时>=2块"全是 0%。更致命的是同一块板的 type
-    //   在 big/small 之间乱跳(749 : 367), 而 solver 按 type 选 PnP 物点
-    //   (BIG_ARMOR_WIDTH=230mm vs SMALL_ARMOR_WIDTH=135mm, 差 1.7 倍),
-    //   于是解出的距离在 1.8 / 2.0 / 2.4m 之间跳变。
-    //   识别每次断 20 帧远超 max_temp_lost_count=11, tracker 反复销毁重建
-    //   (日志特征: vyaw=0.000 且 r=0.200 初值反复出现),
-    //   EKF 拿不到连续观测 -> r/vyaw 乱跳 -> 瞄准点乱飞 -> 重投影红框飞出画面。
-    //   上面这些都是识别率低的【下游症状】, 不修识别率, 调 tracker 参数没有意义。
-    //
-    // 【为什么保留 use_traditional: true】
-    //   YOLO 路径内部仍会回头用传统CV 精修角点(见 yolos/yolov5.cpp:184),
-    //   这对 PnP 精度很重要, 不要因为切到神经网络就把它关掉。
-    //
-    // 【模型选择】由 yaml 的 yolo_name 决定(当前 yolov8), 模型文件
-    //   ../assets/yolov8.xml + .bin, 推理设备 device: CPU。
-    //   工厂分发见 tasks/auto_aim/yolo.cpp, 需要 -DOPENVINO_MAKE(已在
-    //   tasks/auto_aim/CMakeLists.txt:25 定义)。
-    //
-    // 【回退】传统CV 版本备份在 src/rb_auto_aim_debug.cpp.bak-cv,
-    //   或直接把下面这行换回 detector.detect(img)。
-    //   注意 detector 对象仍然保留(上面 :54 构造), 切回来不需要改别处。
-    auto armors = yolo.detect(img);            //识别装甲板。返回 std::list<Armor> —— 这一帧找到的所有装甲板的链表。
-
-    auto targets = tracker.track(armors, t);
-
-    // ===== RAWPROBE (临时诊断, 可整段删除) =====
-    // ★上一版把这段放在 detector.detect() 之前, 那时 solve() 还没跑,
-    //   xyz_in_world / ypr_in_world 全是 0 —— 数据无效。必须放在 track() 之后。
-    //
-    // 打的是【tracker 之前】的原始识别结果, 每块板一行:
-    //   n      = 本帧识别到的板数（关键指标: 应该经常 >=1, 转到某些角度能同时看到 2 块）
-    //   d      = PnP 原始距离(m)
-    //   xyz    = 世界坐标
-    //   yaw    = optimize_yaw 之后的板面朝向(度)
-    //   yawraw = PnP 原始 yaw(度), 与 yaw 差得多说明暴力搜索改动大
-    //   name   = 数字分类结果(ArmorName 枚举下标), type = 大小板(0=small,1=big)
-    //   conf   = 数字分类置信度, 对应 yaml 的 min_confidence
-    //   cx,cy  = 图像内归一化中心
-    {
-      int n = static_cast<int>(armors.size());
-      int i = 0;
-      for (const auto & a : armors)
-      {
-        tools::logger()->info(
-          "RAWPROBE n={} i={} d={:.4f} xyz=({:.4f},{:.4f},{:.4f}) yaw={:.2f} yawraw={:.2f} "
-          "name={} type={} conf={:.3f} cx={:.3f} cy={:.3f}",
-          n, i, a.xyz_in_world.norm(), a.xyz_in_world[0], a.xyz_in_world[1], a.xyz_in_world[2],
-          a.ypr_in_world[0] * 57.2958, a.yaw_raw * 57.2958,
-          static_cast<int>(a.name), static_cast<int>(a.type), a.confidence,
-          a.center_norm.x, a.center_norm.y);
-        i++;
-      }
-      if (n == 0) tools::logger()->info("RAWPROBE n=0");
-
-      // 识别率统计: 每 2 秒报一次。识别率过低时 tracker 会因超过
-      // max_temp_lost_count 反复销毁重建(表现为 vyaw=0.000 / r=0.200 反复出现),
-      // 那时 EKF 永远收敛不了, 上层所有瞄准逻辑都无意义。
-      static int cnt_total = 0, cnt_hit = 0, cnt_multi = 0;
-      static auto last_report = std::chrono::steady_clock::now();
-      cnt_total++;
-      if (n >= 1) cnt_hit++;
-      if (n >= 2) cnt_multi++;
-      auto now2 = std::chrono::steady_clock::now();
-      if (now2 - last_report > std::chrono::seconds(2))
-      {
-        last_report = now2;
-        tools::logger()->warn(
-          "[识别率] 近2秒 {} 帧, 有目标 {} 帧 ({:.0f}%), 同时>=2块 {} 帧 ({:.0f}%)",
-          cnt_total, cnt_hit, cnt_total ? 100.0 * cnt_hit / cnt_total : 0.0,
-          cnt_multi, cnt_total ? 100.0 * cnt_multi / cnt_total : 0.0);
-        cnt_total = cnt_hit = cnt_multi = 0;
-      }
-    }
-    // ===== /RAWPROBE =====  //跟踪 + EKF 更新。输入这一帧的装甲板列表和时间戳，输出 std::list<Target> —— 当前正在跟踪的车。
+    auto armors = detector.detect(img);       //识别装甲板。返回 std::list<Armor> —— 这一帧找到的所有装甲板的链表。
+    auto targets = tracker.track(armors, t);  //跟踪 + EKF 更新。输入这一帧的装甲板列表和时间戳，输出 std::list<Target> —— 当前正在跟踪的车。
     // recor.record(img, q, t);
 
     auto now = std::chrono::steady_clock::now();
@@ -512,7 +385,7 @@ int main(int argc, char * argv[])
     // - 黄线 = 速度方向
     // - 绿线 = 自转角速度大小
     cv::resize(img, img, {}, 0.5, 0.5);  // 显示时缩小图片尺寸
-    // cv::imshow("reprojection", img);
+    cv::imshow("reprojection", img);
     auto key = cv::waitKey(1);//这行有两个作用，第二个很多人不知道：
     // 等 1 毫秒看有没有按键，返回按键的 ASCII 码（没按返回 -1）
     // 它同时负责刷新窗口。OpenCV 的 imshow 只是提交图像，真正的绘制发生在 waitKey 里。没有 waitKey，窗口会一片空白或卡死。 这是 OpenCV 的固定套路：imshow 后面必须跟 waitKey。

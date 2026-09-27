@@ -60,14 +60,14 @@ outpost_max_temp_lost_count: 75
 # low_speed_delay_time: 0.093 # s
 
 #####-----aimer参数-----##### 12mm
-yaw_offset: -0.5 # degree 
+yaw_offset: 0.25 # degree 
 pitch_offset: 0.4 # degree 2
 comming_angle: 60 # degree
 leaving_angle: 20 # degree
 decision_speed: 8 # rad/
 
-high_speed_delay_time: 0.018 # s   远 0.25
-low_speed_delay_time: 0.017 # s    远 0.25
+high_speed_delay_time: 0 # s   远 0.018 
+low_speed_delay_time: 0 # s    远 0.017
 far_pitch_offset: 1.2
 
 #####-----shooter参数-----#####
@@ -114,9 +114,9 @@ camera_sn: ""
 #    画面整体偏暗是目标状态。压曝光还能减少运动模糊、提高帧率上限。
 # 旧(大恒): exposure_us: 4000 / gain: 0.4
 # 下面这组是海康在室内日光灯下的实测可用值, 上场光照不同需重调。
-exposure_us: 5000
-gain: 0.75
-gamma: 1
+exposure_us: 7000
+gain: 0.3
+gamma: 0.1
 img_gamma: 1
 vid_pid: "2ba2:4d55"
 flip: false

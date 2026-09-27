@@ -437,26 +437,6 @@ namespace auto_aim
       rbaim(target_now, bullet_speed);
     }
 
-    // ★2026-09-27 反陀螺模式绕过 MPC, 直接发瞄准点, 速度/加速度前馈置 0。
-    //
-    // 【为什么】反陀螺时 pitch 参考是两层高度之间的方波(每块板切一次, 约 3.4 度),
-    //   MPC 参数 Q=9e6 / R=1 近似 bang-bang, 每个台阶都会输出最大加速度和速度脉冲,
-    //   这些前馈直接进电控 SMC(速度项增益很大), 对方波参考毫无意义。
-    //   实测开自瞄后视觉发出的 pitch 很干净(-4.8 / -8.1 交替), 云台却摆到 +14.5 度、
-    //   又撞到水平下限位, 远超指令范围 —— 先排除前馈这个嫌疑。
-    // 【做法】与 rbHeroplan() 一致: 位置用 rbaim() 的直接结果(已在上面 predict(fly_time)),
-    //   vel = acc = 0, 让电控自己的位置环去走台阶。
-    // 低速(|vyaw| < 90deg/s)仍走 MPC, 不受影响。回滚: planner.cpp.bak-spinbypass
-    if (std::abs(target.ekf_x()(7)) >= 90. / 57.3)
-    {
-      plan.yaw = yaw_pitch(0);
-      plan.yaw_vel = 0;
-      plan.yaw_acc = 0;
-      plan.pitch = yaw_pitch(1);
-      plan.pitch_vel = 0;
-      plan.pitch_acc = 0;
-    }
-
     // 前哨站迭代限制
     if (target.name == ArmorName::outpost)
     {

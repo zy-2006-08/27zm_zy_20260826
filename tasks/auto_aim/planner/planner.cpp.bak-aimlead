@@ -32,7 +32,6 @@ namespace auto_aim
     // 可选键: 其它 yaml(demo/detect_test) 没有这两项, 不能用 tools::read(缺键直接 exit)。
     laser_mode_ = yaml["laser_mode"] ? yaml["laser_mode"].as<bool>() : false;
     laser_latency_ = yaml["laser_latency"] ? yaml["laser_latency"].as<double>() : 0.0;
-    laser_aim_lead_ = yaml["laser_aim_lead"] ? yaml["laser_aim_lead"].as<double>() : 0.0;
     fire_exit_scale_ = yaml["fire_exit_scale"] ? yaml["fire_exit_scale"].as<double>() : 1.0;
     fire_confirm_time_ = yaml["fire_confirm_time"] ? yaml["fire_confirm_time"].as<double>() : 0.0;
     if (laser_mode_)
@@ -404,11 +403,6 @@ namespace auto_aim
     //   2.5m / 24.4m/s 时 fly_time ≈ 0.104s, 小陀螺 vyaw=5rad/s 时就是约 30 度的提前量 ——
     //   子弹需要这个提前量, 激光(光速)不需要, 否则激光按转速成比例地打在"来板方向"的车身上。
     if (!laser_mode_) target.predict(bullet_traj.fly_time);
-    // ★2026-09-28 激光模式低速(逐块追板)时, 云台要一直转着跟板, 从发指令到云台真正转到位有滞后,
-    //   激光就落在板运动方向的后面。这里把瞄准点往前预测 laser_aim_lead_ 抵消这段滞后。
-    //   高速反陀螺时云台 yaw 基本不动、等板扫过来, 没有跟随滞后, 不加。
-    else if (std::abs(target.ekf_x()(7)) < 90. / 57.3)
-      target.predict(laser_aim_lead_);
 
     // tools::logger()->info("h:{}, xy_d:{}, xyz_d:{}, fly_time:{}, ", target_h, min_dist, xyz.norm(), bullet_traj.fly_time);
 

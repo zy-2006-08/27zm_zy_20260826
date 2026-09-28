@@ -70,18 +70,6 @@ high_speed_delay_time: 0 # s   远 0.018
 low_speed_delay_time: 0 # s    远 0.017
 far_pitch_offset: 1.2
 
-# ★激光模拟弹丸模式 (2026-09-28)
-# 上面两个 delay_time 置 0 并【没有】去掉飞行时间: rbplan() 里还有一次独立的
-# target.predict(bullet_traj.fly_time), 2.5m/24.4m/s 约 0.10s。激光没有飞行时间,
-# 这份提前量会让激光按"转速 x 0.1s"打在来板一侧(3rad/s 约 16 度, 5rad/s 约 30 度)。
-# laser_mode: true  -> 不预测 fly_time、pitch 不补重力、开火判定预测 +laser_latency
-# laser_latency     -> 拍照到激光点亮的总延迟(曝光/传输/串口/电控), 用 scripts/fireprobe_stats.py 标定
-# ⚠️ 上真弹丸前必须改回 false, 否则没有提前量也没有重力补偿。
-# laser_mode: true
-laser_mode: false
-laser_latency: 0 # s
-laser_aim_lead: 0.05 # s  激光模式低速追板时瞄准点往前推多久, 抵消云台跟随滞后; 0 = 不补
-
 #####-----shooter参数-----#####
 first_tolerance: 3 # 近距离射击容差，degree
 second_tolerance: 2 # 远距离射击容差，degree
@@ -216,16 +204,6 @@ target_h_error: 0.4
 fire_thresh: 0.003 # 
 small_armor_tolerance: 0.03
 big_armor_tolerance: 0.22
-# ★2026-09-28 开火迟滞, 解决低速时拨盘"哒 ... 哒哒哒"。
-# 原因: 小板窗口 0.03m 在 2.5m 处只有 ±0.34 度, 云台稳态误差 0.1~0.3 度就压在边上,
-#   换板时云台甩过板面 -> 瞬间进窗打一发 -> 过冲出窗停火 -> 稳住后才连发。
-#   日志 2026-09-28_13-17-53: 165 段开火里 88 段只持续 10~20ms。
-# fire_exit_scale  : 开火后窗口放宽倍数(进 ±0.34 度, 出 ±0.68 度), 1.0 = 关闭迟滞
-# fire_confirm_time: 低速时进窗后连续保持多久才开火(s), 0 = 不确认; 高速反陀螺不受影响
-fire_exit_scale: 3.0
-fire_confirm_time: 0.07
-# fire_exit_scale: 1
-# fire_confirm_time: 0
 tower_and_base_armor_tolerance_: 0.10  # 26赛季前哨站和基地装甲板检测宽度
 gimbal_control_delay: 0.02 
 tower_pitch_prediction_time: 0.3

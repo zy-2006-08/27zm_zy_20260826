@@ -29,15 +29,6 @@ namespace auto_aim
     tower_pitch_prediction_time_ = tools::read<double>(yaml, "tower_pitch_prediction_time");
     leaving_angle_ = tools::read<double>(yaml, "leaving_angle") / 57.3;
 
-    // 可选键: 其它 yaml(demo/detect_test) 没有这两项, 不能用 tools::read(缺键直接 exit)。
-    laser_mode_ = yaml["laser_mode"] ? yaml["laser_mode"].as<bool>() : false;
-    laser_latency_ = yaml["laser_latency"] ? yaml["laser_latency"].as<double>() : 0.0;
-    laser_aim_lead_ = yaml["laser_aim_lead"] ? yaml["laser_aim_lead"].as<double>() : 0.0;
-    fire_exit_scale_ = yaml["fire_exit_scale"] ? yaml["fire_exit_scale"].as<double>() : 1.0;
-    fire_confirm_time_ = yaml["fire_confirm_time"] ? yaml["fire_confirm_time"].as<double>() : 0.0;
-    if (laser_mode_)
-      tools::logger()->warn("[Planner] 激光模式: 不预测飞行时间、不补重力, 开火判定预测 +{:.1f}ms。上真弹前必须关掉!", laser_latency_ * 1e3);
-
     setup_yaw_solver(config_path);
     setup_pitch_solver(config_path);
   }
@@ -297,25 +288,9 @@ namespace auto_aim
     aim_target_yaw = atan2(target_armor_xyza(1), target_armor_xyza(0));  //+ 0.3/57.3;
     // feedback_yaw = gimbal_yaw;
 
-    // ★2026-09-28 开火迟滞: 换板 / 丢目标一段时间后, 锁存状态作废, 重新走"进入窗口 + 确认"。
-    const auto fire_now_t = std::chrono::steady_clock::now();
-    if (
-      tools::delta_time(fire_now_t, fire_last_call_t_) > 0.1 ||
-      std::abs(tools::limit_rad(target_yaw - fire_last_armor_yaw_)) > 30. / 57.3)
-    {
-      fire_latched_ = false;
-      fire_cand_ = false;
-    }
-    fire_last_call_t_ = fire_now_t;
-    fire_last_armor_yaw_ = target_yaw;
-
     double shoot_range = target.armor_type == ArmorType::big ? big_armor_tolerance : small_armor_tolerance;
 
     if (target.name == ArmorName::base || target.name == ArmorName::outpost) shoot_range = tower_and_base_armor_tolerance_;
-
-    // 已经在开火: 窗口放宽到 fire_exit_scale_ 倍才判"出窗"(施密特触发器)。
-    // 否则云台稳态误差 0.1~0.3 度正好压在 ±0.34 度的窗口边上, fire 会被噪声来回翻。
-    if (fire_latched_) shoot_range *= fire_exit_scale_;
 
     // 打击范围计算
     double ax = target_armor_xyza(0) - 0.5f * shoot_range * sin(target_yaw);
@@ -344,27 +319,14 @@ namespace auto_aim
     suggest_fire = (control_delta_angle < allow_fire_ang_max && control_delta_angle > allow_fire_ang_min && suggest_pitch);
 
     if (!outpost_is_make) suggest_fire = 0;
-
-    // 进窗确认: 低速(逐块追板)时, 要求连续在窗口内 fire_confirm_time_ 才开火,
-    // 滤掉换板时云台"甩过"装甲板的那一瞬间(即"哒 ... 哒哒哒"里单独那一发)。
-    // 高速反陀螺时云台基本不动、板自己扫过窗口, 扫过时间本来就只有十几 ms, 不做确认。
-    const bool low_speed = std::abs(target.ekf_x()(7)) < 90. / 57.3;
-    if (!suggest_fire)
+    if (suggest_fire)
     {
-      fire_latched_ = false;
-      fire_cand_ = false;
-    }
-    else if (!fire_latched_)
-    {
-      if (!fire_cand_)
-      {
-        fire_cand_ = true;
-        fire_cand_start_t_ = fire_now_t;
-      }
-      if (!low_speed || tools::delta_time(fire_now_t, fire_cand_start_t_) >= fire_confirm_time_) fire_latched_ = true;
+      // tools::logger()->info("fire! control_delta_angle: {},  allow_fire_ang_max: {}, allow_fire_ang_min: {}",
+      //   control_delta_angle, allow_fire_ang_max, allow_fire_ang_min
+      // );
     }
 
-    return fire_latched_;
+    return suggest_fire;
   }
 
   Plan Planner::rbplan(Target target, double bullet_speed, double gimbal_yaw)
@@ -399,16 +361,7 @@ namespace auto_aim
     target_h += target_h_error_;
     auto bullet_traj = tools::Trajectory(bullet_speed, min_dist, target_h);
 
-    // ★2026-09-28 yaml 的 high/low_speed_delay_time 只是 plan() 入口的"额外延迟",
-    //   真正的弹丸飞行时间在这里单独预测, 与那两个参数无关。
-    //   2.5m / 24.4m/s 时 fly_time ≈ 0.104s, 小陀螺 vyaw=5rad/s 时就是约 30 度的提前量 ——
-    //   子弹需要这个提前量, 激光(光速)不需要, 否则激光按转速成比例地打在"来板方向"的车身上。
-    if (!laser_mode_) target.predict(bullet_traj.fly_time);
-    // ★2026-09-28 激光模式低速(逐块追板)时, 云台要一直转着跟板, 从发指令到云台真正转到位有滞后,
-    //   激光就落在板运动方向的后面。这里把瞄准点往前预测 laser_aim_lead_ 抵消这段滞后。
-    //   高速反陀螺时云台 yaw 基本不动、等板扫过来, 没有跟随滞后, 不加。
-    else if (std::abs(target.ekf_x()(7)) < 90. / 57.3)
-      target.predict(laser_aim_lead_);
+    target.predict(bullet_traj.fly_time);
 
     // tools::logger()->info("h:{}, xy_d:{}, xyz_d:{}, fly_time:{}, ", target_h, min_dist, xyz.norm(), bullet_traj.fly_time);
 
@@ -553,9 +506,7 @@ namespace auto_aim
     //     traj(0, HALF_HORIZON + shoot_offset_) - yaw_solver_->work->x(0, HALF_HORIZON + shoot_offset_),
     //     traj(2, HALF_HORIZON + shoot_offset_) -
     //       pitch_solver_->work->x(0, HALF_HORIZON + shoot_offset_)) < fire_thresh_;
-    // 子弹: 已预测到 now+fly_time, 再退 gimbal_control_delay。
-    // 激光: 未预测 fly_time, 只往前补"从拍照到激光点亮"的链路延迟, 让开火判定落在激光真正亮起的时刻。
-    target.predict(laser_mode_ ? laser_latency_ : -gimbal_control_delay);
+    target.predict(-gimbal_control_delay);
     plan.fire = rbShoot(target, (gimbal_yaw) / 57.3 - yaw_offset_);
     // tools::logger()->warn("fire:{}", plan.fire);
     plan.target_yaw = (aim_target_yaw + yaw_offset_) * 57.3;
@@ -867,13 +818,10 @@ namespace auto_aim
     debug_xyza = Eigen::Vector4d(xyz.x(), xyz.y(), xyz.z(), yaw);
 
     auto azim = std::atan2(xyz.y(), xyz.x());
-    auto now_pitch_offset = is_far ? far_pitch_offset_ : pitch_offset_;
-
-    // 激光走直线: pitch 就是视线角, 不加重力下坠补偿(2.5m 时约 1.2 度)。
-    if (laser_mode_) return {tools::limit_rad(azim + yaw_offset_), std::atan2(xyz.z(), min_dist) + now_pitch_offset};
-
     auto bullet_traj = tools::Trajectory(bullet_speed, min_dist, xyz.z());
     if (bullet_traj.unsolvable) throw std::runtime_error("Unsolvable bullet trajectory!");
+
+    auto now_pitch_offset = is_far ? far_pitch_offset_ : pitch_offset_;
 
     return {tools::limit_rad(azim + yaw_offset_), bullet_traj.pitch + now_pitch_offset};
   }

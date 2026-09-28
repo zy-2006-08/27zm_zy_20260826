@@ -100,16 +100,6 @@ namespace auto_aim
     // 开火判定用 +laser_latency_ 代替 -gimbal_control_delay。
     bool laser_mode_ = false;
     double laser_latency_ = 0.0;  // s, 图像曝光/传输 + 串口 + 电控中断的总延迟
-    double laser_aim_lead_ = 0.0;  // s, 激光模式低速追板时瞄准点前移时间, 抵消云台跟随滞后
-
-    // 开火迟滞 + 进窗确认(yaml fire_exit_scale / fire_confirm_time, 均可缺省)
-    double fire_exit_scale_ = 1.0;    // 开火后窗口放宽倍数, 1.0 = 无迟滞(原行为)
-    double fire_confirm_time_ = 0.0;  // s, 低速时进窗后需保持多久才开火, 0 = 不确认(原行为)
-    bool fire_latched_ = false;
-    bool fire_cand_ = false;
-    std::chrono::steady_clock::time_point fire_cand_start_t_{};
-    std::chrono::steady_clock::time_point fire_last_call_t_{};
-    double fire_last_armor_yaw_ = 0.0;
 
     TinySolver * yaw_solver_;
     TinySolver * pitch_solver_;

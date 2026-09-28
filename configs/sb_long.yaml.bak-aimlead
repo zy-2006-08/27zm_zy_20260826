@@ -77,10 +77,9 @@ far_pitch_offset: 1.2
 # laser_mode: true  -> 不预测 fly_time、pitch 不补重力、开火判定预测 +laser_latency
 # laser_latency     -> 拍照到激光点亮的总延迟(曝光/传输/串口/电控), 用 scripts/fireprobe_stats.py 标定
 # ⚠️ 上真弹丸前必须改回 false, 否则没有提前量也没有重力补偿。
-# laser_mode: true
-laser_mode: false
+laser_mode: true
+# laser_mode: false
 laser_latency: 0 # s
-laser_aim_lead: 0.05 # s  激光模式低速追板时瞄准点往前推多久, 抵消云台跟随滞后; 0 = 不补
 
 #####-----shooter参数-----#####
 first_tolerance: 3 # 近距离射击容差，degree
@@ -222,10 +221,10 @@ big_armor_tolerance: 0.22
 #   日志 2026-09-28_13-17-53: 165 段开火里 88 段只持续 10~20ms。
 # fire_exit_scale  : 开火后窗口放宽倍数(进 ±0.34 度, 出 ±0.68 度), 1.0 = 关闭迟滞
 # fire_confirm_time: 低速时进窗后连续保持多久才开火(s), 0 = 不确认; 高速反陀螺不受影响
-fire_exit_scale: 3.0
-fire_confirm_time: 0.07
-# fire_exit_scale: 1
-# fire_confirm_time: 0
+# fire_exit_scale: 3.0
+# fire_confirm_time: 0.07
+fire_exit_scale: 1
+fire_confirm_time: 0
 tower_and_base_armor_tolerance_: 0.10  # 26赛季前哨站和基地装甲板检测宽度
 gimbal_control_delay: 0.02 
 tower_pitch_prediction_time: 0.3

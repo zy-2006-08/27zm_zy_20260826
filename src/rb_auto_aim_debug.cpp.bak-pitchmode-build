@@ -352,13 +352,14 @@ int main(int argc, char * argv[])
         i++;
       }
       if (n == 0) tools::logger()->info("RAWPROBE n=0");
-      // 识别率统计: 每 2 秒报一次。识别率过低时 tracker 会,因超过
+x
+      // 识别率统计: 每 2 秒报一次。识别率过低时 tracker 会因超过
       // max_temp_lost_count 反复销毁重建(表现为 vyaw=0.000 / r=0.200 反复出现),
       // 那时 EKF 永远收敛不了, 上层所有瞄准逻辑都无意义。
       static int cnt_total = 0, cnt_hit = 0, cnt_multi = 0;
       static auto last_report = std::chrono::steady_clock::now();
       cnt_total++;
-      if (n >= 1) cnt_hit++;x
+      if (n >= 1) cnt_hit++;
       if (n >= 2) cnt_multi++;
       auto now2 = std::chrono::steady_clock::now();
       if (now2 - last_report > std::chrono::seconds(2))

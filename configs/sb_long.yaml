@@ -60,8 +60,10 @@ outpost_max_temp_lost_count: 75
 # low_speed_delay_time: 0.093 # s
 
 #####-----aimer参数-----##### 12mm
-yaw_offset: 0.25 # degree 
-pitch_offset: 0.4 # degree 2
+# yaw_offset: 0.3
+# pitch_offset: 0
+yaw_offset: -1 # degree 
+pitch_offset: 1.2 # degree 2.7
 comming_angle: 60 # degree
 leaving_angle: 20 # degree
 decision_speed: 8 # rad/
@@ -77,9 +79,11 @@ far_pitch_offset: 1.2
 # laser_mode: true  -> 不预测 fly_time、pitch 不补重力、开火判定预测 +laser_latency
 # laser_latency     -> 拍照到激光点亮的总延迟(曝光/传输/串口/电控), 用 scripts/fireprobe_stats.py 标定
 # ⚠️ 上真弹丸前必须改回 false, 否则没有提前量也没有重力补偿。
-# laser_mode: true
-laser_mode: false
-laser_latency: 0 # s
+laser_mode: true
+# laser_mode: false
+laser_pitch_mode: 1 # 0直线激光 pitch, 1真实弹道 pitch, 2直线+pitch_offset
+# laser_latency: 1.5 # s
+laser_latency: 0.02 # s
 laser_aim_lead: 0.05 # s  激光模式低速追板时瞄准点往前推多久, 抵消云台跟随滞后; 0 = 不补
 
 #####-----shooter参数-----#####

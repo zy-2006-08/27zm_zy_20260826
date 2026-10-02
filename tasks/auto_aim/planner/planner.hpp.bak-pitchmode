@@ -99,7 +99,6 @@ namespace auto_aim
     // 激光飞行时间为 0、走直线: 不预测 fly_time、不做重力补偿,
     // 开火判定用 +laser_latency_ 代替 -gimbal_control_delay。
     bool laser_mode_ = false;
-    int laser_pitch_mode_ = 0;  // 0=直线, 1=真实弹道, 2=直线+固定pitch_offset
     double laser_latency_ = 0.0;  // s, 图像曝光/传输 + 串口 + 电控中断的总延迟
     double laser_aim_lead_ = 0.0;  // s, 激光模式低速追板时瞄准点前移时间, 抵消云台跟随滞后
 

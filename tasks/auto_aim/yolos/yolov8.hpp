@@ -1,6 +1,7 @@
 #ifndef AUTO_AIM__YOLOV8_HPP
 #define AUTO_AIM__YOLOV8_HPP
 
+#include <chrono>
 #include <list>
 #include <opencv2/opencv.hpp>
 #include <openvino/openvino.hpp>
@@ -31,6 +32,11 @@ namespace auto_aim
     std::string device_, model_path_;
     std::string save_path_, debug_path_;
     bool debug_, use_roi_;
+    // ★2026-10-03 (分支 fix/yolov8-corner-refine) 用传统CV灯条精修 YOLO 角点, yaml use_traditional 控制。
+    //   yolov5 一直有这一步, yolov8 原来漏了: yaml 写 true 但从未生效。
+    bool use_traditional_ = false;
+    int refine_total_ = 0, refine_ok_ = 0;  // 精修成功率统计, 每 2 秒打一次日志
+    std::chrono::steady_clock::time_point refine_report_t_ = std::chrono::steady_clock::now();
 
     const int class_num_ = 2;
     const float nms_threshold_ = 0.3;

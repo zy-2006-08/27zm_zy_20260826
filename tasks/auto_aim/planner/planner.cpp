@@ -37,6 +37,27 @@ namespace auto_aim
     laser_aim_lead_ = yaml["laser_aim_lead"] ? yaml["laser_aim_lead"].as<double>() : 0.0;
     fire_exit_scale_ = yaml["fire_exit_scale"] ? yaml["fire_exit_scale"].as<double>() : 1.0;
     fire_confirm_time_ = yaml["fire_confirm_time"] ? yaml["fire_confirm_time"].as<double>() : 0.0;
+    fire_max_duration_ = yaml["fire_max_duration"] ? yaml["fire_max_duration"].as<double>() : 0.0;
+    fire_center_ratio_ = yaml["fire_center_ratio"] ? yaml["fire_center_ratio"].as<double>() : 1.0;
+    shoot_latency_ = yaml["shoot_latency"] ? yaml["shoot_latency"].as<double>() : 0.0;
+    high_spin_armor_tolerance_ = yaml["high_spin_armor_tolerance"] ? yaml["high_spin_armor_tolerance"].as<double>() : 0.0;
+    tools::logger()->warn("[Planner] 出膛延迟补偿 shoot_latency={:.1f}ms, 高速开火窗口宽度={:.0f}mm (0=沿用 small_armor_tolerance)",
+                          shoot_latency_ * 1e3, high_spin_armor_tolerance_ * 1e3);
+    // 缺省值 = 原来写死的 60 / leaving_angle, 不配置时行为不变。
+    low_speed_coming_angle_ = (yaml["low_speed_coming_angle"] ? yaml["low_speed_coming_angle"].as<double>() : 60.0) / 57.3;
+    low_speed_leaving_angle_ = yaml["low_speed_leaving_angle"] ? yaml["low_speed_leaving_angle"].as<double>() / 57.3 : leaving_angle_;
+    fire_switch_settle_time_ = yaml["fire_switch_settle_time"] ? yaml["fire_switch_settle_time"].as<double>() : 0.0;
+    spin_select_tau_ = yaml["spin_select_tau"] ? yaml["spin_select_tau"].as<double>() : 0.0;
+    spin_high_settle_time_ = yaml["spin_high_settle_time"] ? yaml["spin_high_settle_time"].as<double>() : 0.0;
+    spin_vyaw_settle_time_ = yaml["spin_vyaw_settle_time"] ? yaml["spin_vyaw_settle_time"].as<double>() : 0.0;
+    spin_vyaw_stable_band_ = yaml["spin_vyaw_stable_band"] ? yaml["spin_vyaw_stable_band"].as<double>() : 0.0;
+    spin_enter_high_ = yaml["spin_enter_high"] ? yaml["spin_enter_high"].as<double>() : kSpinThreshold;
+    spin_exit_high_ = yaml["spin_exit_high"] ? yaml["spin_exit_high"].as<double>() : kSpinThreshold;
+    if (spin_exit_high_ > spin_enter_high_) spin_exit_high_ = spin_enter_high_;
+    if (spin_select_tau_ > 0.0)
+      tools::logger()->warn("[Planner] 快慢判定用低通转速, 时间常数 {:.2f}s (分界仍是 90 deg/s)", spin_select_tau_);
+    if (yaml["low_speed_yaw_step_limit_deg"])
+      low_speed_yaw_step_limit_ = yaml["low_speed_yaw_step_limit_deg"].as<double>() / 57.3;
     if (laser_mode_)
       tools::logger()->warn("[Planner] 激光模式: pitch_mode={} (0直线/1弹道/2直线+偏移), 开火判定预测 +{:.1f}ms。上真弹前必须关掉!", laser_pitch_mode_, laser_latency_ * 1e3);
 
@@ -282,15 +303,37 @@ namespace auto_aim
     // double est_y = x_est(2);
     // double est_yaw = x_est(6);
 
+    const auto armor_xyza = target.armor_xyza_list();
     Eigen::Vector4d target_armor_xyza;
     auto min_dist = 1e10;
-    for (auto & xyza : target.armor_xyza_list())
+    int selected_id = -1;
+    for (int i = 0; i < static_cast<int>(armor_xyza.size()); ++i)
     {
+      const auto & xyza = armor_xyza[i];
       auto dist = xyza.head<2>().norm();
       if (dist < min_dist)
       {
         min_dist = dist;
         target_armor_xyza = xyza;
+        selected_id = i;
+      }
+    }
+
+    // 低速追板时，开火判断必须和 rbaim() 使用同一块 last_id 装甲板，
+    // 不能在这里再次按最近距离选另一块板，否则会出现“瞄旧板、按新板开火”。
+    const auto ekf_x = target.ekf_x();
+    const bool high_spin = is_high_spin(target);
+    if (!high_spin && target.last_id >= 0 &&
+        target.last_id < static_cast<int>(armor_xyza.size()))
+    {
+      const double center_yaw = std::atan2(ekf_x[2], ekf_x[0]);
+      const double spin_sign = ekf_x(7) >= 0 ? 1.0 : -1.0;
+      const double d = tools::limit_rad(armor_xyza[target.last_id][3] - center_yaw) * spin_sign;
+      // 和 rbaim() 用同一个范围, 保证"瞄的板"和"按哪块板判开火"一致。
+      if (d <= low_speed_leaving_angle_ && d >= -low_speed_coming_angle_)
+      {
+        selected_id = target.last_id;
+        target_armor_xyza = armor_xyza[selected_id];
       }
     }
 
@@ -301,17 +344,31 @@ namespace auto_aim
 
     // ★2026-09-28 开火迟滞: 换板 / 丢目标一段时间后, 锁存状态作废, 重新走"进入窗口 + 确认"。
     const auto fire_now_t = std::chrono::steady_clock::now();
-    if (
-      tools::delta_time(fire_now_t, fire_last_call_t_) > 0.1 ||
-      std::abs(tools::limit_rad(target_yaw - fire_last_armor_yaw_)) > 30. / 57.3)
+    const bool armor_switched =
+      std::abs(tools::limit_rad(target_yaw - fire_last_armor_yaw_)) > 30. / 57.3;
+    const bool target_lost = tools::delta_time(fire_now_t, fire_last_call_t_) > 0.1;
+    if (target_lost || armor_switched)
     {
       fire_latched_ = false;
       fire_cand_ = false;
+      fire_spent_ = false;  // 换板/丢目标: 新的一块板重新允许开火
     }
+    const bool low_speed = !high_spin;
+    if (armor_switched && low_speed)
+      fire_block_until_t_ = fire_now_t + std::chrono::microseconds(static_cast<int64_t>(fire_switch_settle_time_ * 1e6));
     fire_last_call_t_ = fire_now_t;
     fire_last_armor_yaw_ = target_yaw;
 
     double shoot_range = target.armor_type == ArmorType::big ? big_armor_tolerance : small_armor_tolerance;
+
+    // ★2026-10-04 高速反陀螺开火窗口单独放宽(yaml high_spin_armor_tolerance, 0 = 沿用原宽度)。
+    //   仍然是"装甲板面上左右多宽"换成角度判断, 不按时间。
+    //   原来 0.03m(±1.5cm): 8.5rad/s 时板扫过只有 ~11ms, 电控 25Hz(40ms 一发) 只够一发。
+    //   小板宽 135mm, 弹落点离板中心 ±(135/2 - 余量) 以内都算打中。窗口取 0.10m(±5cm):
+    //   两发首尾落点离中心最多 ±5cm, 留 1.75cm 给散布, 不出板;
+    //   8.5rad/s / r=0.29m 时窗口 ~40ms, 刚好两发; 转得更快只剩一发, 转得慢可能三发, 都不会打出板。
+    if (high_spin && high_spin_armor_tolerance_ > 0.0 && target.armor_type != ArmorType::big)
+      shoot_range = high_spin_armor_tolerance_;
 
     if (target.name == ArmorName::base || target.name == ArmorName::outpost) shoot_range = tower_and_base_armor_tolerance_;
 
@@ -350,7 +407,23 @@ namespace auto_aim
     // 进窗确认: 低速(逐块追板)时, 要求连续在窗口内 fire_confirm_time_ 才开火,
     // 滤掉换板时云台"甩过"装甲板的那一瞬间(即"哒 ... 哒哒哒"里单独那一发)。
     // 高速反陀螺时云台基本不动、板自己扫过窗口, 扫过时间本来就只有十几 ms, 不做确认。
-    const bool low_speed = std::abs(target.ekf_x()(7)) < 90. / 57.3;
+    if (fire_now_t < fire_block_until_t_)
+      suggest_fire = false;
+    // ★2026-10-03 低速"一次开火"状态机:
+    //   进窗 -> 连续在窗内 fire_confirm_time_ -> 开火 fire_max_duration_ -> 结束,
+    //   结束后标记 fire_spent_, 同一块板即使还在窗口内也不再开火, 直到换板/丢目标。
+    //   原来到时只清 fire_latched_, 目标仍在窗内就立刻重新确认又开火, 所以两次开火之间没有间隔。
+    //   要求开火时云台已在中心: 起火判定用 fire_center_ratio_ 收窄后的窗口。
+    if (low_speed && fire_spent_) suggest_fire = false;
+
+    if (low_speed && !fire_latched_ && suggest_fire && fire_center_ratio_ < 1.0)
+    {
+      // 起火时只认更靠近中心的窄窗口, 避免"还没到中心就开火"。
+      const double center = 0.5 * (allow_fire_ang_max + allow_fire_ang_min);
+      const double half = 0.5 * (allow_fire_ang_max - allow_fire_ang_min) * fire_center_ratio_;
+      if (std::abs(control_delta_angle - center) > half) suggest_fire = false;
+    }
+
     if (!suggest_fire)
     {
       fire_latched_ = false;
@@ -363,14 +436,78 @@ namespace auto_aim
         fire_cand_ = true;
         fire_cand_start_t_ = fire_now_t;
       }
-      if (!low_speed || tools::delta_time(fire_now_t, fire_cand_start_t_) >= fire_confirm_time_) fire_latched_ = true;
+      if (!low_speed || tools::delta_time(fire_now_t, fire_cand_start_t_) >= fire_confirm_time_)
+      {
+        fire_started_t_ = fire_now_t;
+        fire_latched_ = true;
+      }
+    }
+
+    // 低速开火到时: 结束本次开火并标记已用完。
+    if (fire_latched_ && low_speed && fire_max_duration_ > 0.0 &&
+        tools::delta_time(fire_now_t, fire_started_t_) >= fire_max_duration_)
+    {
+      fire_latched_ = false;
+      fire_cand_ = false;
+      fire_spent_ = true;
     }
 
     return fire_latched_;
   }
 
+  void Planner::update_spin_select(const Target & target)
+  {
+    const double v = std::abs(target.ekf_x()(7));
+    const auto now = std::chrono::steady_clock::now();
+    if (!spin_select_init_ || spin_select_tau_ <= 0.0)
+    {
+      spin_select_vyaw_ = v;
+      spin_select_init_ = true;
+    }
+    else
+    {
+      // 非对称一阶低通: 转速往上走时慢慢跟(滤掉换板尖峰), 往下走时立刻跟(真减速/停转马上退出高速)。
+      //   换板尖峰只会向上冲, 所以这样既能挡住尖峰, 又不会让"停下来了还在用高速打法"。
+      //   回放(慢速日志 08-58 / 12-28, tau=0.6): 慢速误判高速 26.1%/22.9% -> 0.3%/0.0%;
+      //   快速段判高速 100% 不变, 停转后仍判高速 0%。对称低通 tau=0.6 时停转后误判高速 19%。
+      // dt 按真实调用间隔算, 丢目标后(间隔很长)直接重置, 避免沿用旧目标的转速。
+      const double dt = tools::delta_time(now, spin_select_t_);
+      if (dt > 0.3)
+      {
+        spin_select_vyaw_ = v;
+        spin_select_high_ = v >= spin_enter_high_;
+      }
+      else if (v < spin_select_vyaw_) spin_select_vyaw_ = v;
+      else
+      {
+        const double a = dt / (spin_select_tau_ + dt);
+        spin_select_vyaw_ += a * (v - spin_select_vyaw_);
+      }
+    }
+    spin_select_t_ = now;
+    if (!spin_select_high_ && spin_select_vyaw_ >= spin_enter_high_) spin_select_high_ = true;
+    else if (spin_select_high_ && spin_select_vyaw_ < spin_exit_high_) spin_select_high_ = false;
+  }
+
+  bool Planner::is_high_spin(const Target & target)
+  {
+    if (spin_select_tau_ <= 0.0 || !spin_select_init_)
+      return std::abs(target.ekf_x()(7)) >= spin_enter_high_;
+    return spin_select_high_;
+  }
+
   Plan Planner::rbplan(Target target, double bullet_speed, double gimbal_yaw)
   {
+    update_spin_select(target);
+    const bool spin_high_now = is_high_spin(target);
+    const auto spin_now_t = std::chrono::steady_clock::now();
+    if (spin_high_now && !spin_high_prev_)
+    {
+      spin_high_since_ = spin_now_t;
+      spin_vyaw_at_stable_start_ = spin_select_vyaw_;
+      spin_vyaw_stable_since_ = spin_now_t;
+    }
+    spin_high_prev_ = spin_high_now;
     // std::cout<<target.getEKFXest()[0]<<std::endl;
     // std::cout<<target.getEKFXest()[0]<<std::endl;
 
@@ -409,7 +546,7 @@ namespace auto_aim
     // ★2026-09-28 激光模式低速(逐块追板)时, 云台要一直转着跟板, 从发指令到云台真正转到位有滞后,
     //   激光就落在板运动方向的后面。这里把瞄准点往前预测 laser_aim_lead_ 抵消这段滞后。
     //   高速反陀螺时云台 yaw 基本不动、等板扫过来, 没有跟随滞后, 不加。
-    else if (std::abs(target.ekf_x()(7)) < 90. / 57.3)
+    else if (!is_high_spin(target))
       target.predict(laser_aim_lead_);
 
     // tools::logger()->info("h:{}, xy_d:{}, xyz_d:{}, fly_time:{}, ", target_h, min_dist, xyz.norm(), bullet_traj.fly_time);
@@ -496,7 +633,8 @@ namespace auto_aim
     // 【做法】与 rbHeroplan() 一致: 位置用 rbaim() 的直接结果(已在上面 predict(fly_time)),
     //   vel = acc = 0, 让电控自己的位置环去走台阶。
     // 低速(|vyaw| < 90deg/s)仍走 MPC, 不受影响。回滚: planner.cpp.bak-spinbypass
-    if (std::abs(target.ekf_x()(7)) >= 90. / 57.3)
+    const bool high_spin_plan = is_high_spin(target);
+    if (high_spin_plan)
     {
       plan.yaw = yaw_pitch(0);
       plan.yaw_vel = 0;
@@ -504,6 +642,41 @@ namespace auto_aim
       plan.pitch = yaw_pitch(1);
       plan.pitch_vel = 0;
       plan.pitch_acc = 0;
+    }
+
+    // ★2026-10-03 低速 yaw 指令单周期限幅(yaml low_speed_yaw_step_limit_deg)。
+    //   原来写在 plan() 里, 但车上跑的是 rbplan(), 所以一直没生效; 现在挪到这里。
+    //   【作用】低速追板换板时, rbaim 选到新板, 视觉 yaw 指令会一下跳几度(日志: -3.06 -> +4.17,
+    //   云台实际几乎没动), 电控追这个跳变就"甩过头再回来"。限幅后指令按每周期最多 N 度过渡。
+    //   限幅生效时清掉 MPC 的 yaw 速度/加速度前馈: 位置被限住而前馈照推, 云台一样会冲过头。
+    //   只在低速路径: 高速反陀螺云台基本不动, 指令本来就不跳, 加限幅反而拖慢瞄准。
+    //   低速/高速判定用 is_high_spin(), 和本函数其它分支保持一致。
+    //   【单位】是"每次 rbplan 调用"最多改多少度。plan_thread 约 5ms 调一次,
+    //   0.15 度/次 ≈ 30 度/s, 1.0 度/次 ≈ 200 度/s。
+    //   丢目标后 rbplan 不再被调用, 重新捕获时距上次调用超过 0.2s, 下面会直接重新初始化,
+    //   不会从丢失前的旧角度慢慢挪过去。
+    if (!high_spin_plan)
+    {
+      const auto now_t = std::chrono::steady_clock::now();
+      // 超过 0.2s 没调用(丢目标/没控制)就重新初始化, 直接用当前指令, 不做限幅。
+      if (!yaw_command_initialized_ || tools::delta_time(now_t, last_yaw_command_t_) > 0.2)
+      {
+        last_yaw_command_ = plan.yaw;
+        yaw_command_initialized_ = true;
+      }
+      const double yaw_delta = tools::limit_rad(plan.yaw - last_yaw_command_);
+      if (std::abs(yaw_delta) > low_speed_yaw_step_limit_)
+      {
+        plan.yaw = tools::limit_rad(last_yaw_command_ + std::copysign(low_speed_yaw_step_limit_, yaw_delta));
+        plan.yaw_vel = 0.0;
+        plan.yaw_acc = 0.0;
+      }
+      last_yaw_command_ = plan.yaw;
+      last_yaw_command_t_ = now_t;
+    }
+    else
+    {
+      yaw_command_initialized_ = false;
     }
 
     // 前哨站迭代限制
@@ -557,8 +730,28 @@ namespace auto_aim
     //       pitch_solver_->work->x(0, HALF_HORIZON + shoot_offset_)) < fire_thresh_;
     // 子弹: 已预测到 now+fly_time, 再退 gimbal_control_delay。
     // 激光: 未预测 fly_time, 只往前补"从拍照到激光点亮"的链路延迟, 让开火判定落在激光真正亮起的时刻。
-    target.predict(laser_mode_ ? laser_latency_ : -gimbal_control_delay);
+    // ★2026-10-04 shoot_latency_: 电控收到 mode==2 -> 拨盘推弹 -> 弹丸过摩擦轮(出膛) 的机械延迟。
+    //   电控 Ozone dbg_shot_lat_avg 实测 62.9ms(min 59 / max 65, 7 颗)。
+    //   原来只补了 laser_latency(拍照->电控收到), 没补这一段, 8.5rad/s 时板多转 ~30 度, 弹丸偏晚。
+    //   开火判定往前多预测这一段, 下令时刻 = 弹丸出膛时板正好在窗口里。
+    target.predict((laser_mode_ ? laser_latency_ : -gimbal_control_delay) + shoot_latency_);
     plan.fire = rbShoot(target, (gimbal_yaw) / 57.3 - yaw_offset_);
+    if (spin_high_settle_time_ > 0.0 && spin_high_now &&
+        tools::delta_time(spin_now_t, spin_high_since_) < spin_high_settle_time_)
+      plan.fire = false;
+    // 高速刚开始时 vyaw 还在 3->5->8->10 快速变化，fly_time 预测目标也随之跳变。
+    // 只有高速状态和 vyaw 同时稳定一段时间，才允许第一发，避免启动阶段的提前/错相位弹。
+    if (spin_vyaw_settle_time_ > 0.0 && spin_vyaw_stable_band_ > 0.0 && spin_high_now)
+    {
+      if (std::abs(spin_select_vyaw_ - spin_vyaw_at_stable_start_) > spin_vyaw_stable_band_)
+      {
+        spin_vyaw_at_stable_start_ = spin_select_vyaw_;
+        spin_vyaw_stable_since_ = spin_now_t;
+      }
+      if (tools::delta_time(spin_now_t, spin_vyaw_stable_since_) < spin_vyaw_settle_time_)
+        plan.fire = false;
+    }
+
     // tools::logger()->warn("fire:{}", plan.fire);
     plan.target_yaw = (aim_target_yaw + yaw_offset_) * 57.3;
 
@@ -805,12 +998,22 @@ namespace auto_aim
       }
     }
 
-    double abs_vyaw = abs(ekf_x(7));
-    if (abs_vyaw < 90. / 57.3 && armorId_delta_list[target.last_id].second < 60. / 57.3)
+    // 快慢判定统一走 is_high_spin(): rbaim 在一次 rbplan 里被轨迹生成调用约 100 次,
+    // 用同一个低通判定保证整条轨迹走同一种打法, 不会在轨迹中间切换。
+    const bool high_spin = is_high_spin(target);
+    if (!high_spin && target.last_id >= 0 &&
+        target.last_id < static_cast<int>(armor_xyza_list.size()))
     {  // 判断当前看到的装甲板在预测时间之后是否还在视野内
-      min_dist = armor_xyza_list[target.last_id].head<2>().norm();
-      xyz = armor_xyza_list[target.last_id].head<3>();
-      yaw = armor_xyza_list[target.last_id](3);
+      const double spin_sign = ekf_x(7) >= 0 ? 1.0 : -1.0;
+      const double d = armorId_delta_list[target.last_id].second * spin_sign;
+      // ★2026-10-03 低速只在 [-low_speed_coming_angle, +low_speed_leaving_angle] 范围内追同一块板,
+      //   超出就换下一块。原来是 [-60, +20] 度, 一块板追 80 度, 太大。
+      if (d <= low_speed_leaving_angle_ && d >= -low_speed_coming_angle_)
+      {
+        min_dist = armor_xyza_list[target.last_id].head<2>().norm();
+        xyz = armor_xyza_list[target.last_id].head<3>();
+        yaw = armor_xyza_list[target.last_id](3);
+      }
     }
 
     // ★2026-09-27 反陀螺(第二版): |vyaw| >= 90deg/s 时 yaw 固定, pitch 按"下一块转到正面的板"选高度。
@@ -836,7 +1039,7 @@ namespace auto_aim
     //   注意: rbplan 在调 rbaim 之前已 predict(fly_time), 所以这里的板朝向是【子弹到达时刻】的。
     //
     // 回滚: planner.cpp.bak-antispin2 / planner.hpp.bak-antispin2
-    if (abs_vyaw >= 90. / 57.3)
+    if (high_spin)
     {
       const double cx = ekf_x[0];
       const double cy = ekf_x[2];

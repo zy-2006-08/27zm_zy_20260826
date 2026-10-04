@@ -107,6 +107,8 @@ target_link_libraries(rb_auto_aim_debug ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_ai
 # ---------------------------------------------------------------------------
 add_executable(auto_aim_test tests/auto_aim_test.cpp)
 target_link_libraries(auto_aim_test ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim tools io)
+add_executable(replay_switch_guard tests/replay_switch_guard.cpp)
+target_link_libraries(replay_switch_guard ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim tools io)
 
 # ---------------------------------------------------------------------------
 # 标定程序 / Calibration
@@ -296,3 +298,4 @@ if(RERUN_AVAILABLE)
     target_link_libraries(detect_test rerun_sdk)
     target_compile_definitions(detect_test PRIVATE USE_RERUN)
 endif()
+

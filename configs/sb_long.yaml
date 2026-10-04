@@ -67,6 +67,12 @@ pitch_offset: 1.2 # degree 2.7
 comming_angle: 60 # degree
 leaving_angle: 20 # degree
 decision_speed: 8 # rad/
+spin_select_tau: 0.6 # s 快慢判定低通时间常数
+spin_enter_high: 2.0 # rad/s 进入高速反陀螺
+spin_exit_high: 1.3 # rad/s 退出高速追板
+spin_high_settle_time: 0.3 # s 切入高速后等待云台切换完成再开火
+spin_vyaw_settle_time: 0.35 # s 高速vyaw稳定后才允许开火
+spin_vyaw_stable_band: 0.4 # rad/s vyaw在此范围内才算稳定
 
 high_speed_delay_time: 0 # s   远 0.018 
 low_speed_delay_time: 0 # s    远 0.017
@@ -226,8 +232,17 @@ big_armor_tolerance: 0.22
 #   日志 2026-09-28_13-17-53: 165 段开火里 88 段只持续 10~20ms。
 # fire_exit_scale  : 开火后窗口放宽倍数(进 ±0.34 度, 出 ±0.68 度), 1.0 = 关闭迟滞
 # fire_confirm_time: 低速时进窗后连续保持多久才开火(s), 0 = 不确认; 高速反陀螺不受影响
-fire_exit_scale: 3.0
-fire_confirm_time: 0.07
+fire_exit_scale: 2.0
+fire_confirm_time: 0.05 # s 低速进窗后连续保持多久才开火
+fire_max_duration: 0 # s 低速一次开火持续时间, 到时后本块板不再开火
+fire_center_ratio: 1 # 低速起火只认开火窗口中间这部分, 1.0=不收窄
+fire_switch_settle_time: 0.07 # s  低速换板后等待云台稳定再开火
+# ★2026-10-04 出膛延迟: 电控收到 mode==2 -> 拨盘推弹 -> 弹丸过摩擦轮。电控 Ozone dbg_shot_lat_avg 实测 62.9ms(59~65)
+shoot_latency: 0.023 # s
+# ★2026-10-04 高速反陀螺小板开火窗口宽度(m), 按板面左右宽度换成角度判断, 不按时间。0 = 沿用 small_armor_tolerance
+#   小板宽 0.135m; 0.10 = 落点离中心 ±5cm 内才开火, 留 1.75cm 余量不出板。8.5rad/s 时约 40ms = 两发
+high_spin_armor_tolerance: 0.099 # m
+low_speed_yaw_step_limit_deg: 0.05 # degree/plan周期 低速yaw最大变化量
 # fire_exit_scale: 1
 # fire_confirm_time: 0
 tower_and_base_armor_tolerance_: 0.10  # 26赛季前哨站和基地装甲板检测宽度

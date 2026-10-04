@@ -29,6 +29,8 @@ namespace auto_aim
     use_roi_ = yaml["use_roi"].as<bool>();
     roi_ = cv::Rect(x, y, width, height);
     offset_ = cv::Point2f(x, y);
+    use_traditional_ = yaml["use_traditional"] ? yaml["use_traditional"].as<bool>() : false;
+    tools::logger()->warn("[YOLOV8] 传统CV角点精修: {}", use_traditional_ ? "开" : "关");
 
     save_path_ = "imgs";
     std::filesystem::create_directory(save_path_);
@@ -179,8 +181,33 @@ namespace auto_aim
         continue;
       }
 
+      // ★2026-10-03 用传统CV灯条精修角点(与 yolov5.cpp 相同做法)。
+      //   【为什么】YOLO 关键点是回归出来的, 有几个像素误差; 板侧过去时左右灯条在图上挤到一起,
+      //   几个像素就能让 PnP 距离偏 15~25cm、板朝向变化被压扁约 1/3
+      //   (日志 2026-10-03_08-58-31: 一块板经过时 PnP 深度变 0.4~0.8m, 几何上应只有 ~0.07m)。
+      //   这又让 EKF 换板时把转速冲到 2.5~3.0, 慢速时走错高速分支、没瞄到中心就开火。
+      //   精修失败(没找到两根灯条/偏差过大)时 Detector::detect 不改 armor.points, 保留 YOLO 原角点。
+      //   bgr_img 是原图; 开 use_roi 时 armor.points 已经加过 offset, 也是原图坐标, 两者一致。
+      if (use_traditional_)
+      {
+        refine_total_++;
+        if (detector_.detect(*it, bgr_img)) refine_ok_++;
+      }
+
       it->center_norm = get_center_norm(bgr_img, it->center);
       ++it;
+    }
+
+    if (use_traditional_)
+    {
+      const auto now = std::chrono::steady_clock::now();
+      if (now - refine_report_t_ > std::chrono::seconds(2))
+      {
+        refine_report_t_ = now;
+        tools::logger()->info(
+          "[YOLOV8] 近2秒角点精修 {}/{} 成功 ({:.0f}%)", refine_ok_, refine_total_, refine_total_ ? 100.0 * refine_ok_ / refine_total_ : 0.0);
+        refine_total_ = refine_ok_ = 0;
+      }
     }
 
     if (debug_) draw_detections(bgr_img, armors, frame_count);

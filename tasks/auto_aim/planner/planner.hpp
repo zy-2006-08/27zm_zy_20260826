@@ -77,6 +77,15 @@ namespace auto_aim
       }
     }
     Plan rbplan(Target target, double bullet_speed, double gimbal_yaw);
+
+    // ★2026-10-03 快慢打法判定统一入口。标准不变: |转速| >= 90 deg/s(1.57 rad/s) 走高速反陀螺。
+    //   但判定用的不是 EKF 瞬时转速, 而是它的低通值(时间常数 spin_select_tau_, yaml spin_select_tau, 秒)。
+    //   【原因】日志 2026-10-03_08-58-31: 靶车真实 1.2~1.4 rad/s, EKF 每次换板冲到 2.5~3.0 持续约 0.3s,
+    //   这 0.3s 走了高速打法、低速开火逻辑全部失效 -> 慢速没瞄到中心就开火。
+    //   tau=0 时等价于原行为(直接用瞬时值)。只影响"走哪套打法", 不改 EKF、不改瞄准预测。
+    bool is_high_spin(const Target & target);
+    // 每次 rbplan 入口调用一次, 更新低通值。
+    void update_spin_select(const Target & target);
     Plan sbplan(Target target, double bullet_speed, double gimbal_yaw);
     bool rbShoot(Target target, double gimbal_yaw, bool tower_fixed_pitch = false);
     Plan rbHeroplan(Target target, double bullet_speed, double gimbal_yaw);
@@ -106,11 +115,44 @@ namespace auto_aim
     // 开火迟滞 + 进窗确认(yaml fire_exit_scale / fire_confirm_time, 均可缺省)
     double fire_exit_scale_ = 1.0;    // 开火后窗口放宽倍数, 1.0 = 无迟滞(原行为)
     double fire_confirm_time_ = 0.0;  // s, 低速时进窗后需保持多久才开火, 0 = 不确认(原行为)
+    double fire_max_duration_ = 0.0;   // s, 低速一次开火最长持续时间, 0 = 不限制
+    double fire_switch_settle_time_ = 0.0;  // s, 低速换板后等待云台到新板中心
     bool fire_latched_ = false;
     bool fire_cand_ = false;
     std::chrono::steady_clock::time_point fire_cand_start_t_{};
     std::chrono::steady_clock::time_point fire_last_call_t_{};
     double fire_last_armor_yaw_ = 0.0;
+    std::chrono::steady_clock::time_point fire_block_until_t_{};
+    std::chrono::steady_clock::time_point fire_started_t_{};
+    bool fire_spent_ = false;          // 低速: 本块板已开过一次火, 换板/丢目标前不再开火
+    double fire_center_ratio_ = 1.0;   // 低速起火窗口相对开火窗口的比例, 1.0 = 不收窄
+    double shoot_latency_ = 0.0;              // s, 电控收到开火 -> 弹丸出膛 的机械延迟
+    double high_spin_armor_tolerance_ = 0.0;  // m, 高速反陀螺小板开火窗口宽度, 0 = 沿用 small_armor_tolerance
+    double low_speed_coming_angle_ = 60.0 / 57.3;   // 低速: 板还差多少度转正就开始追它
+    double low_speed_leaving_angle_ = 20.0 / 57.3;  // 低速: 板转过正对多少度就放弃、换下一块
+
+    // 快慢打法判定(见 is_high_spin 注释)
+    double spin_select_tau_ = 0.0;      // s, 判定用转速的低通时间常数, 0 = 原行为
+    double spin_high_settle_time_ = 0.0; // s, 切入高速打法后禁火等待云台换到中心
+    double spin_vyaw_settle_time_ = 0.0; // s, 高速vyaw稳定后才允许开火
+    double spin_vyaw_stable_band_ = 0.0;  // rad/s, vyaw在此范围内才算稳定
+    std::chrono::steady_clock::time_point spin_high_since_{};
+    std::chrono::steady_clock::time_point spin_vyaw_stable_since_{};
+    double spin_vyaw_at_stable_start_ = 0.0;
+    bool spin_high_prev_ = false;
+    double spin_select_vyaw_ = 0.0;     // 低通后的 |vyaw|, rad/s
+    bool spin_select_init_ = false;
+    bool spin_select_high_ = false;     // 带滞回的当前打法状态
+    double spin_enter_high_ = 90.0 / 57.3;
+    double spin_exit_high_ = 90.0 / 57.3;
+    std::chrono::steady_clock::time_point spin_select_t_{};
+    static constexpr double kSpinThreshold = 90. / 57.3;  // 快慢分界, 与原代码一致
+
+    // 低速换板时限制视觉 yaw 指令单周期跳变，避免新旧装甲板切换造成甩过再回正。
+    double low_speed_yaw_step_limit_ = 1.0 / 57.3;
+    bool yaw_command_initialized_ = false;
+    double last_yaw_command_ = 0.0;
+    std::chrono::steady_clock::time_point last_yaw_command_t_{};
 
     TinySolver * yaw_solver_;
     TinySolver * pitch_solver_;

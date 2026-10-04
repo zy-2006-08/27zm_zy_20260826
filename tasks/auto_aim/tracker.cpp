@@ -21,6 +21,23 @@ namespace auto_aim
     outpost_max_temp_lost_count_ = yaml["outpost_max_temp_lost_count"].as<int>();
     normal_temp_lost_count_ = max_temp_lost_count_;
 
+    // 空窗后转速修正限幅, 可选键, 缺省关闭 = 原行为。
+    if (yaml["ekf_gap_vyaw_limit"]) Target::gap_vyaw_cfg.enable = yaml["ekf_gap_vyaw_limit"].as<bool>();
+    if (yaml["ekf_gap_s"]) Target::gap_vyaw_cfg.gap_s = yaml["ekf_gap_s"].as<double>();
+    if (yaml["ekf_gap_max_dvyaw"]) Target::gap_vyaw_cfg.max_dvyaw = yaml["ekf_gap_max_dvyaw"].as<double>();
+    if (yaml["ekf_vyaw_q"]) Target::gap_vyaw_cfg.vyaw_q = yaml["ekf_vyaw_q"].as<double>();
+    if (yaml["ekf_angle_r_scale"]) Target::gap_vyaw_cfg.angle_r_scale = yaml["ekf_angle_r_scale"].as<double>();
+    if (yaml["ekf_angle_r_max_vyaw"]) Target::gap_vyaw_cfg.angle_r_max_vyaw = yaml["ekf_angle_r_max_vyaw"].as<double>();
+    if (yaml["ekf_angle_r_warmup"]) Target::gap_vyaw_cfg.angle_r_warmup = yaml["ekf_angle_r_warmup"].as<int>();
+    if (yaml["ekf_angle_r_gate_deg"]) Target::gap_vyaw_cfg.angle_r_gate = yaml["ekf_angle_r_gate_deg"].as<double>() / 57.3;
+    if (yaml["ekf_angle_r_bypass_frames"]) Target::gap_vyaw_cfg.angle_r_bypass_frames = yaml["ekf_angle_r_bypass_frames"].as<int>();
+    if (yaml["ekf_angle_r_min_vyaw"]) Target::gap_vyaw_cfg.angle_r_min_vyaw = yaml["ekf_angle_r_min_vyaw"].as<double>();
+    if (Target::gap_vyaw_cfg.angle_r_scale != 1.0)
+      tools::logger()->warn("[Tracker] 板朝向观测噪声放大 x{:.0f} (仅 |vyaw|<{:.1f} rad/s)", Target::gap_vyaw_cfg.angle_r_scale, Target::gap_vyaw_cfg.angle_r_max_vyaw);
+    if (Target::gap_vyaw_cfg.vyaw_q > 0) tools::logger()->warn("[Tracker] 转速过程噪声 v2 覆盖为 {:.0f}(原 400)", Target::gap_vyaw_cfg.vyaw_q);
+    if (Target::gap_vyaw_cfg.enable)
+      tools::logger()->warn("[Tracker] 空窗后转速限幅开启: 空窗>{:.0f}ms 时 vyaw 单帧修正限 ±{:.2f} rad/s", Target::gap_vyaw_cfg.gap_s * 1e3, Target::gap_vyaw_cfg.max_dvyaw);
+
     last_cam_is_short = true;
   }
 

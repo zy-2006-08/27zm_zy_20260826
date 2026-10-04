@@ -358,7 +358,7 @@ int main(int argc, char * argv[])
       static int cnt_total = 0, cnt_hit = 0, cnt_multi = 0;
       static auto last_report = std::chrono::steady_clock::now();
       cnt_total++;
-      if (n >= 1) cnt_hit++;x
+      if (n >= 1) cnt_hit++;
       if (n >= 2) cnt_multi++;
       auto now2 = std::chrono::steady_clock::now();
       if (now2 - last_report > std::chrono::seconds(2))
@@ -371,7 +371,7 @@ int main(int argc, char * argv[])
         cnt_total = cnt_hit = cnt_multi = 0;
       }
     }
-    // ===== /RAWPROBE =====  //跟踪 + EKF 更新。输入这一帧的装甲板列表和时间戳，输出 std::list<Target> —— 当前正在跟踪的车。
+    // ===== /RAWPROBE =====  //跟踪 + EKF 更新。输入这一帧的装甲板列表和时间戳，输出 std::list<Target> —— 当前正在跟踪的车。q
     // recor.record(img, q, t);
 
     auto now = std::chrono::steady_clock::now();

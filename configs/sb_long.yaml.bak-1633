@@ -1,0 +1,284 @@
+pattern_cols: 11      # 棋盘格每行的内角点数（格子数-1）
+pattern_rows: 8      # 棋盘格每列的内角点数（格子数-1）
+square_size_mm: 30   # 棋盘格方块大小（毫米）
+
+enemy_color: "auto"
+# enemy_color: "blue"
+# enemy_color: "red"
+
+
+#####-----神经网络参数-----#####
+yolo_name: yolov8
+classify_model: ../assets/tiny_resnet.onnx
+yolo11_model_path: ../assets/yolo11.xml
+yolov8_model_path: ../assets/yolov8.xml
+yolov5_model_path: ../assets/yolov5.xml
+device: CPU
+min_confidence: 0.8
+use_traditional: true
+
+#####-----ROI-----#####
+roi: 
+  x: 420
+  y: 50
+  width: 600
+  height: 600
+
+use_roi: false
+
+# #####-----传统方法参数-----#####
+threshold: 150
+max_angle_error: 45 # degree
+min_lightbar_ratio: 1.5
+max_lightbar_ratio: 20
+min_lightbar_length: 8
+min_armor_ratio: 1
+max_armor_ratio: 5
+max_side_ratio: 1.5
+max_rectangular_error: 25 # degree
+# min_confidence: 0.8
+
+number_classifier:
+  model_path: "../assets/rv_model/mlp.onnx"   # 模型路径 (确保文件存在)
+  label_path: "../assets/rv_model/label.txt"  # 标签文件路径
+  threshold: 0.5                 # 数字分类阈值
+  ignore_classes: ["negative"]   # 忽略的类别
+
+
+#####-----tracker参数-----#####
+min_detect_count: 5
+max_temp_lost_count: 11
+outpost_max_temp_lost_count: 75
+
+#####-----aimer参数-----##### 6mm
+# yaw_offset: 0.5 # degree -2.5
+# pitch_offset: 3.2 # degree 2
+# comming_angle: 60 # degree
+# leaving_angle: 20 # degree
+# decision_speed: 8 # rad/s
+# high_speed_delay_time: 0.12 # s
+# low_speed_delay_time: 0.093 # s
+
+#####-----aimer参数-----##### 12mm
+# yaw_offset: 0.3
+# pitch_offset: 0
+yaw_offset: -0.9 # degree 
+pitch_offset: 1.2 # degree 2.7
+comming_angle: 60 # degree
+leaving_angle: 20 # degree
+decision_speed: 8 # rad/
+spin_select_tau: 0.6 # s 快慢判定低通时间常数
+spin_enter_high: 2.0 # rad/s 进入高速反陀螺
+spin_exit_high: 1.3 # rad/s 退出高速追板
+spin_high_settle_time: 0.3 # s 切入高速后等待云台切换完成再开火
+spin_vyaw_settle_time: 0 # s 高速vyaw稳定后才允许开火
+spin_vyaw_stable_band: 0.4 # rad/s vyaw在此范围内才算稳定
+
+high_speed_delay_time: 0 # s   远 0.018 
+low_speed_delay_time: 0 # s    远 0.017
+far_pitch_offset: 1.2
+
+# ★激光模拟弹丸模式 (2026-09-28)
+# 上面两个 delay_time 置 0 并【没有】去掉飞行时间: rbplan() 里还有一次独立的
+# target.predict(bullet_traj.fly_time), 2.5m/24.4m/s 约 0.10s。激光没有飞行时间,
+# 这份提前量会让激光按"转速 x 0.1s"打在来板一侧(3rad/s 约 16 度, 5rad/s 约 30 度)。
+# laser_mode: true  -> 不预测 fly_time、pitch 不补重力、开火判定预测 +laser_latency
+# laser_latency     -> 拍照到激光点亮的总延迟(曝光/传输/串口/电控), 用 scripts/fireprobe_stats.py 标定
+# ⚠️ 上真弹丸前必须改回 false, 否则没有提前量也没有重力补偿。
+laser_mode: true
+# laser_mode: false
+laser_pitch_mode: 1 # 0直线激光 pitch, 1真实弹道 pitch, 2直线+pitch_offset
+# laser_latency: 1.5 # s
+laser_latency: 0.02 # s
+laser_aim_lead: 0.05 # s  激光模式低速追板时瞄准点往前推多久, 抵消云台跟随滞后; 0 = 不补
+
+#####-----shooter参数-----#####
+first_tolerance: 3 # 近距离射击容差，degree
+second_tolerance: 2 # 远距离射击容差，degree
+judge_distance: 2 #距离判断阈值
+auto_fire: true # 是否由自瞄控制射击
+
+#12mm camera
+# camera_name: "hikrobot"
+# camera_sn: "DA7188471"
+# exposure_us: 6000
+# gain: 0.7
+# gamma: 0.5  
+# vid_pid: "2ba2:4d55"
+# flip: true
+# mirror: true
+
+#6mm camera
+# camera_name: "hikrobot"
+# camera_sn: "DA7188471"
+# exposure_us: 9000
+# gain: 0.5
+# vid_pid: "2bdf:0001"
+# flip: true
+# mirror: true
+
+# camera_name 支持 "auto": 程序自己枚举, 先找海康再找大恒。
+# 队里两种相机混用, 忘改这里的表现是"找不到相机", 排查成本很高。
+# 需要强制指定时写 "hikrobot" 或 "daheng"。
+# 旧: camera_name: "daheng"
+camera_name: "auto"
+# camera_sn 留空 = 用探测到的那台。只有一台相机时不必填;
+# 填错会让 hikrobot 的 ChoiceCamrea / daheng 的 enum_and_check_camera 匹配不上。
+# 旧: camera_sn: "FDN24040487"  (大恒 FDN24040487)
+camera_sn: ""
+# 曝光/增益。★两家相机的 gain 换算方式不同:
+#   大恒 -> 映射到 dB 量程(本机 0-24dB)
+#   海康 -> 乘以 AutoGainUpperLimit(本机上限 17)
+# 所以同一个 gain 数字在两家上亮度不同, 换相机后必须重新调。
+# 用 build/camera_tuning 现场调(w/s 改曝光, e/d 改增益, p 存盘)。
+#
+# 自瞄的曝光标准和普通摄影相反: 要的是灯条亮、环境全暗,
+#    画面整体偏暗是目标状态。压曝光还能减少运动模糊、提高帧率上限。
+# 旧(大恒): exposure_us: 4000 / gain: 0.4
+# 下面这组是海康在室内日光灯下的实测可用值, 上场光照不同需重调。
+exposure_us: 3500
+gain: 0.75
+gamma: 0.1
+img_gamma: 1
+vid_pid: "2ba2:4d55"
+flip: false
+mirror: false
+
+# -1  0  0
+#  0 -1  0
+#  0  0  1
+# R_gimbal2imubody: [-1, 0, 0, 0, -1, 0, 0, 0, 1]
+R_gimbal2imubody: [-1, 0, 0, 0, -1, 0, 0, 0, 1]
+
+# # 6mm camera
+# # 重投影误差: 0.0787px
+# camera_matrix: [1809.564717217451, 0, 706.3327817682249, 0, 1805.15500074533, 538.4969433458281, 0, 0, 1]
+# distort_coeffs: [-0.07041439840690113, 0.151412749802884, 0.0007210441135535533, -0.0006368697407199156, -0.03172837319091361]
+# # 相机同理想情况的偏角: yaw-1.74 pitch-1.63 roll1.35 degree
+# # 标定板到世界坐标系原点的水平距离: 2.17 m
+# # 标定板同竖直摆放时的偏角: yaw-0.69 pitch16.89 roll-2.66 degree
+# R_camera2gimbal: [0.029716925347032186, -0.02905823526614317, 0.9991358883110625, -0.9992825867505816, 0.02261477470051248, 0.030379002325802554, -0.023477993206084943, -0.9993218655310523, -0.028365346931643467]
+# t_camera2gimbal: [0.09950350840289986, -0.0178102433697989, 0.042332935712018425]
+# # _camera2gimbal第一位调yaw
+# # _camera2gimbal第二位调yaw
+# # _camera2gimbal第三位调pitch
+
+# #12mm camera
+# 相机同理想情况的偏角: yaw-1.01 pitch0.40 roll-3.17 degree
+# 标定板到世界坐标系原点的水平距离: 3.99 m
+# 标定板同竖直摆放时的偏角: yaw18.59 pitch10.91 roll179.05 degree
+# ------------------------------------------------------------
+# 手眼标定 (相机 -> 云台)
+# 2026-09-10 与上面内参同批标定。校验结果:
+#   旋转矩阵正交(行范数=1, 行间点积~1e-17), 行列式=+1
+#   相机光轴与枪管(云台 x 轴)夹角 1.64 度 -> 相机朝前安装, 合理
+#   平移量 (152.1, -43.1, 55.0) mm, 到云台旋转中心 167mm
+#
+# ★手眼参数与相机的【安装位置】绑定, 不只是镜头。
+#   动过相机支架、拆装过相机, 都要重标, 否则解算的世界坐标有固定偏差。
+# 旧值(长焦相机在原支架上):
+# R_camera2gimbal: [0.01724177990211943, 0.008031166851665581, 0.9998190943289729, -0.9983196678891441, -0.05519050378990992, 0.017659246788155888, 0.05532234387221791, -0.9984435430460833, 0.007066089305084381]
+R_camera2gimbal: [0.018109017539635286, -0.022121526972262218, 0.99959126723284464, -0.99980594423031455, 0.007353548990007619, 0.018275644967561844, -0.0077548285266657857, -0.99972824475537703, -0.021984068614680469]
+# t_camera2gimbal: [-0.06053188184293589, 0.04306961926275315, 0.07400899334239491]
+t_camera2gimbal: [0.15213185209264252, -0.043067123205239977, 0.054993773075197441]
+# ------------------------------------------------------------
+# 重投影误差: 0.1039px
+# ============================================================
+# 相机内参 / 畸变系数
+# 2026-09-10 用 calibrate_input 重新标定 (海康 MV-CS016-10UC + 8.2mm 镜头)
+#   22 组样本, 重投影误差 0.082px
+#   fx=2389 fy=2388  主点偏离图像中心约 1%  视场 33.5x25.5 度
+#
+# 下面注释掉的是原长焦那套 (fx=4733, 反算焦距约 16mm)。
+# 换回长焦相机时把新的 4 行注释掉、把旧的 4 行放开即可, 不必重新标定。
+# ★注意内参与镜头是绑定的: 换镜头必须换内参, 否则 PnP 解算的距离会整体偏。
+#   fx 差一倍 -> 估算距离差一倍, 弹道解算全错。
+# ------------------------------------------------------------
+# 旧: 长焦镜头 (约 16mm)
+# camera_matrix: [4733.43401413086, 0, 599.7636786594903, 0, 4741.85173415842, 478.8499763209543, 0, 0, 1]
+camera_matrix: [2389.4067787283038, 0, 705.5905792253958, 0, 2388.045783704049, 524.43585835935278, 0, 0, 1]
+# 旧: 长焦镜头 (约 16mm)
+# distort_coeffs: [0.021580388912033843, -1.367908470971454, -0.0014335525678331896, -0.0030262393654059178, 31.166315287522888]
+distort_coeffs: [-0.017809651901004808, 0.032959052150772557, 0.00023015544913718082, -2.0367139105880875e-06, 0.41480271347536707]
+# ============================================================
+gimbal_y1: 1
+gimbal_p2: 3
+gimbal_r3: 2
+#####-----cboard参数-----#####
+quaternion_canid: 0x100
+bullet_speed_canid: 0x101
+send_canid: 0xff
+can_interface: "can0"
+
+#####-----gimbal参数-----#####
+# 串口板实测枚举为 ttyACM0 (CH340, USB id 1a86:55d3)。
+# 原来写 ttyACM1 打不开, 而 gimbal.cpp 在 open 失败时直接 exit(1),
+# 所以整个上场程序会起不来。
+# 串口号取决于插入顺序和 USB 口, 想免维护可改用 by-id 固定路径:
+#   com_port: "/dev/serial/by-id/usb-1a86_USB_Single_Serial_5C38171288-if00"
+# 旧: com_port: "/dev/ttyACM1"
+com_port: "/dev/ttyACM0"
+
+
+#####-----planner-----#####
+target_dist_error: 0.0
+target_h_error: 0.4
+fire_thresh: 0.003 # 
+small_armor_tolerance: 0.03
+big_armor_tolerance: 0.22
+# ★2026-09-28 开火迟滞, 解决低速时拨盘"哒 ... 哒哒哒"。
+# 原因: 小板窗口 0.03m 在 2.5m 处只有 ±0.34 度, 云台稳态误差 0.1~0.3 度就压在边上,
+#   换板时云台甩过板面 -> 瞬间进窗打一发 -> 过冲出窗停火 -> 稳住后才连发。
+#   日志 2026-09-28_13-17-53: 165 段开火里 88 段只持续 10~20ms。
+# fire_exit_scale  : 开火后窗口放宽倍数(进 ±0.34 度, 出 ±0.68 度), 1.0 = 关闭迟滞
+# fire_confirm_time: 低速时进窗后连续保持多久才开火(s), 0 = 不确认; 高速反陀螺不受影响
+fire_exit_scale: 2.0
+fire_confirm_time: 0.05 # s 低速进窗后连续保持多久才开火
+fire_max_duration: 0 # s 低速一次开火持续时间, 到时后本块板不再开火
+fire_center_ratio: 1 # 低速起火只认开火窗口中间这部分, 1.0=不收窄
+fire_switch_settle_time: 0.07 # s  低速换板后等待云台稳定再开火
+# ★2026-10-04 出膛延迟: 电控收到 mode==2 -> 拨盘推弹 -> 弹丸过摩擦轮。电控 Ozone dbg_shot_lat_avg 实测 62.9ms(59~65)
+shoot_latency: 0.063 # s
+# ★2026-10-04 高速反陀螺小板开火窗口宽度(m), 按板面左右宽度换成角度判断, 不按时间。0 = 沿用 small_armor_tolerance
+#   小板宽 0.135m; 0.10 = 落点离中心 ±5cm 内才开火, 留 1.75cm 余量不出板。8.5rad/s 时约 40ms = 两发
+high_spin_armor_tolerance: 0.05 # m
+low_speed_yaw_step_limit_deg: 0.05 # degree/plan周期 低速yaw最大变化量
+# fire_exit_scale: 1
+# fire_confirm_time: 0
+tower_and_base_armor_tolerance_: 0.10  # 26赛季前哨站和基地装甲板检测宽度
+gimbal_control_delay: 0.02 
+tower_pitch_prediction_time: 0.3
+
+max_yaw_acc: 50
+Q_yaw: [9e6, 0]
+R_yaw: [1]
+
+# ★2026-09 临时安全垫: 100 -> 25。验证不震之后可以调回 100（或折中到 50）。
+#
+# 配合 Q_pitch=[9e6,0] / R_pitch=[1]（位置权重是控制代价的 900 万倍）, MPC 实际退化为
+# bang-bang: 能用多大加速度就用多大。以本次实测的 9 度调转为例:
+#     100 rad/s^2 -> 耗时 2*sqrt(0.157/100) = 79ms, 峰值角速度约 225 deg/s
+#      25 rad/s^2 -> 耗时 158ms,              峰值约 112 deg/s
+# 225 deg/s 有两个害处:
+#   1) 79ms 接近云台振荡周期(50~60ms)的量级, 加速度阶跃的频谱正好压在谐振点上;
+#   2) 15ms 曝光下产生约 3.4 度拖影(按 fy=2388 折算约 140px), 而近距离小装甲板本身
+#      才几十 px 宽 —— 图像糊掉导致 PnP 解崩、EKF 速度乱飞、Unsolvable、mode 掉 0,
+#      云台失去指令后重新锁定又是一个新的阶跃, 把一次开火变成一串阶跃激励。
+# 降到 25 把峰值砍半、拖影减半, 同时把激励频率挪出谐振区。
+# ⚠️ 代价: 打小陀螺时 pitch 跟随会变肉。这是临时保护, 不是最终值。
+max_pitch_acc: 25
+Q_pitch: [9e6,0]
+R_pitch: [1]
+
+
+
+# auto q = gimbal.q(t - 1ms);
+
+# float yaw = ypr[0];
+# float pitch = ypr[1];
+# float roll = ypr[2];
+
+# Eigen::Quaterniond q = 
+#     Eigen::AngleAxisd(yaw, Eigen::Vector3d::UnitZ()) *   // 绕Z轴旋转yaw
+#     Eigen::AngleAxisd(pitch, Eigen::Vector3d::UnitY()) * // 绕Y轴旋转pitch
+#     Eigen::AngleAxisd(-roll, Eigen::Vector3d::UnitX());   // 绕X轴旋转roll

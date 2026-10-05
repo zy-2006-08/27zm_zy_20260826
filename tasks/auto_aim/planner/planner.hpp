@@ -127,7 +127,15 @@ namespace auto_aim
     bool fire_spent_ = false;          // 低速: 本块板已开过一次火, 换板/丢目标前不再开火
     double fire_center_ratio_ = 1.0;   // 低速起火窗口相对开火窗口的比例, 1.0 = 不收窄
     double shoot_latency_ = 0.0;              // s, 电控收到开火 -> 弹丸出膛 的机械延迟
+    bool shoot_latency_by_dist_ = false;      // true = shoot_latency 按距离两点线性插值
+    double shoot_latency_near_ = 0.0, shoot_latency_far_ = 0.0;            // s
+    double shoot_latency_near_dist_ = 2.0, shoot_latency_far_dist_ = 4.0;  // m
     double high_spin_armor_tolerance_ = 0.0;  // m, 高速反陀螺小板开火窗口宽度, 0 = 沿用 small_armor_tolerance
+    double high_spin_armor_tolerance_slow_ = 0.0;  // m, 高速分支慢端(<= vyaw_slow)窗口, 0 = 不插值
+    double high_spin_window_vyaw_slow_ = 3.0;      // rad/s, 这个转速及以下用宽窗口
+    double high_spin_window_vyaw_fast_ = 7.0;      // rad/s, 这个转速及以上用 high_spin_armor_tolerance
+    int rbaim_high_spin_best_id_ = -1;        // rbaim() 高速分支本次选中的瞄准板(每次调用都会覆盖)
+    int fire_lock_armor_id_ = -1;             // 本周期云台真正在等的那块板, rbShoot 高速开火判定锁定它
     double low_speed_coming_angle_ = 60.0 / 57.3;   // 低速: 板还差多少度转正就开始追它
     double low_speed_leaving_angle_ = 20.0 / 57.3;  // 低速: 板转过正对多少度就放弃、换下一块
 
@@ -150,6 +158,9 @@ namespace auto_aim
 
     // 低速换板时限制视觉 yaw 指令单周期跳变，避免新旧装甲板切换造成甩过再回正。
     double low_speed_yaw_step_limit_ = 1.0 / 57.3;
+    double low_speed_yaw_jump_ = 0.0;   // rad, >0 时低速 yaw 只平滑"跳变"(单周期变化超过它), 连续运动不限速
+    double last_raw_yaw_ = 0.0;        // 上一周期限幅前的原始 yaw 指令
+    double yaw_jump_offset_ = 0.0;     // 正在收回的跳变补偿(rad)
     bool yaw_command_initialized_ = false;
     double last_yaw_command_ = 0.0;
     std::chrono::steady_clock::time_point last_yaw_command_t_{};

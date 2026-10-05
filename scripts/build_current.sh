@@ -20,7 +20,7 @@ if [ "$(uname)" = Darwin ]; then
     exec "$ROOT/mac/build.sh"
 fi
 
-DEFAULT_TARGET="auto_aim_test"
+DEFAULT_TARGET="rb_auto_aim_debug"
 
 resolve_target() {
     local rel="$1"

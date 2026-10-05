@@ -23,7 +23,7 @@ if [ "$(uname)" = Darwin ]; then BUILD_DIR="build-mac"; else BUILD_DIR="build"; 
 
 # 默认程序。打开的文件不是任何可执行文件的源文件时（比如在改 detector.cpp、
 # tracker.hpp 这类库代码）跑它 —— 离线自瞄测试覆盖面最广，最常用。
-DEFAULT_TARGET="auto_aim_test"
+DEFAULT_TARGET="rb_auto_aim_debug"
 
 # ---- 从 CMakeLists.txt 解析 add_executable(<目标> <源文件>) ----
 # 用 grep 抓行、sed 剥括号，避免依赖 cmake --build 的元数据（那个要先配置过）。

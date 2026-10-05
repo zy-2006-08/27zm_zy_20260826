@@ -30,6 +30,7 @@ namespace auto_aim
     ArmorPriority priority;
     bool jumped;
     int last_id;  // debug only
+    bool predict_extrap_ = false;  // ★2026-10-05 true = 这是 planner 的外推副本, predict 时套用平移速度死区
     Eigen::Vector3d xyz_in_world;
 
     Target() = default;
@@ -110,6 +111,9 @@ namespace auto_aim
       // 帧不放大, 让 EKF 正常追上新转速。缺省 1e9 = 不门控。
       double angle_r_gate = 1e9;
       int angle_r_bypass_frames = 30;
+      // ★2026-10-05 平移速度死区(m/s): 往前外推时, 车中心水平合速度低于它就不外推平移(只外推旋转)。
+      //   只影响"往未来预测"(dt>0), 不改 EKF 自身的状态/协方差。0 = 关闭(原行为)。
+      double predict_v_deadband = 0.0;
       double angle_r_min_vyaw = 0.0;  // rad/s, |vyaw| 低于它(目标基本没在转)时不放大
     };
     static GapVyawConfig gap_vyaw_cfg;

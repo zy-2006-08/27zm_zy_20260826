@@ -62,7 +62,7 @@ outpost_max_temp_lost_count: 75
 #####-----aimer参数-----##### 12mm
 # yaw_offset: 0.3
 # pitch_offset: 0
-yaw_offset: -1 # degree 
+yaw_offset: -0.45 # degree 
 pitch_offset: 1.2 # degree 2.7
 comming_angle: 60 # degree
 leaving_angle: 20 # degree
@@ -70,8 +70,8 @@ decision_speed: 8 # rad/
 spin_select_tau: 0.6 # s 快慢判定低通时间常数
 spin_enter_high: 2.0 # rad/s 进入高速反陀螺
 spin_exit_high: 1.3 # rad/s 退出高速追板
-spin_high_settle_time: 0.3 # s 切入高速后等待云台切换完成再开火
-spin_vyaw_settle_time: 0.35 # s 高速vyaw稳定后才允许开火
+spin_high_settle_time: 0 # s 切入高速后等待云台切换完成再开火
+spin_vyaw_settle_time: 0 # s 高速vyaw稳定后才允许开火
 spin_vyaw_stable_band: 0.4 # rad/s vyaw在此范围内才算稳定
 
 high_speed_delay_time: 0 # s   远 0.018 
@@ -136,8 +136,8 @@ camera_sn: ""
 #    画面整体偏暗是目标状态。压曝光还能减少运动模糊、提高帧率上限。
 # 旧(大恒): exposure_us: 4000 / gain: 0.4
 # 下面这组是海康在室内日光灯下的实测可用值, 上场光照不同需重调。
-exposure_us: 7000
-gain: 0.3
+exposure_us: 3500
+gain: 0.75
 gamma: 0.1
 img_gamma: 1
 vid_pid: "2ba2:4d55"
@@ -238,14 +238,30 @@ fire_max_duration: 0 # s 低速一次开火持续时间, 到时后本块板不�
 fire_center_ratio: 1 # 低速起火只认开火窗口中间这部分, 1.0=不收窄
 fire_switch_settle_time: 0.07 # s  低速换板后等待云台稳定再开火
 # ★2026-10-04 出膛延迟: 电控收到 mode==2 -> 拨盘推弹 -> 弹丸过摩擦轮。电控 Ozone dbg_shot_lat_avg 实测 62.9ms(59~65)
-shoot_latency: 0.023 # s
+shoot_latency: 0.045 # s
+# ★2026-10-05 shoot_latency 按距离插值(小陀螺实测): 2m 要 55ms、4m 要 45ms 才打中心。
+#   四项都配了就按距离线性插值(超出范围外推, 不低于 0), 上面的固定 shoot_latency 不再生效; 删掉这四行恢复固定值。
+shoot_latency_near: 0.055 # s
+shoot_latency_near_dist: 2.0 # m
+shoot_latency_far: 0.045 # s
+shoot_latency_far_dist: 4.0 # m
 # ★2026-10-04 高速反陀螺小板开火窗口宽度(m), 按板面左右宽度换成角度判断, 不按时间。0 = 沿用 small_armor_tolerance
 #   小板宽 0.135m; 0.10 = 落点离中心 ±5cm 内才开火, 留 1.75cm 余量不出板。8.5rad/s 时约 40ms = 两发
-high_spin_armor_tolerance: 0.099 # m
+high_spin_armor_tolerance: 0.025 # m
+# ★2026-10-05 高速分支窗口按转速插值: <= vyaw_slow 用 _slow(宽, 连发), >= vyaw_fast 用上面的 high_spin_armor_tolerance(窄, 一发), 中间线性。
+#   2m/r=0.29: 3rad/s ±5cm 约 2~3 发; 7rad/s+ ±1.25cm 一发。_slow 设 0 = 不插值(恢复原行为)。
+high_spin_armor_tolerance_slow: 0.08 # m
+high_spin_window_vyaw_slow: 3.0 # rad/s
+high_spin_window_vyaw_fast: 6.5 # rad/s
+# ★2026-10-05 平移速度死区(m/s): 车中心合速度低于它时, 往前预测不外推平移(停车后云台不再往前滑)。0 = 关闭
+predict_v_deadband: 0.15 # m/s
 low_speed_yaw_step_limit_deg: 0.05 # degree/plan周期 低速yaw最大变化量
+# ★2026-10-05 低速 yaw 只平滑"跳变"(换板): 单周期(~5ms)原始 yaw 变化 > 这个度数才算跳变, 按上面 step_limit 平滑过渡;
+#   平移/慢速跟板等连续运动不限速(原来一律限到 10 度/s, 平移起步跟不上)。0 = 回到原来的一律限速。
+low_speed_yaw_jump_deg: 0.5 # degree
 # fire_exit_scale: 1
 # fire_confirm_time: 0
-tower_and_base_armor_tolerance_: 0.10  # 26赛季前哨站和基地装甲板检测宽度
+tower_and_base_armor_tolerance_: 0.10  # 26赛季前哨站和基地装甲板检测宽度2 
 gimbal_control_delay: 0.02 
 tower_pitch_prediction_time: 0.3
 

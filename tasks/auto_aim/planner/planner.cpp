@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "planner.hpp"
 
 #include <vector>
@@ -40,7 +41,27 @@ namespace auto_aim
     fire_max_duration_ = yaml["fire_max_duration"] ? yaml["fire_max_duration"].as<double>() : 0.0;
     fire_center_ratio_ = yaml["fire_center_ratio"] ? yaml["fire_center_ratio"].as<double>() : 1.0;
     shoot_latency_ = yaml["shoot_latency"] ? yaml["shoot_latency"].as<double>() : 0.0;
+    // ★2026-10-05 按距离插值的 shoot_latency(两点线性, 超出范围外推, 不低于 0)。
+    //   四个键都配了才启用, 否则仍用上面的固定 shoot_latency。
+    if (yaml["shoot_latency_near"] && yaml["shoot_latency_far"] && yaml["shoot_latency_near_dist"] && yaml["shoot_latency_far_dist"])
+    {
+      shoot_latency_near_ = yaml["shoot_latency_near"].as<double>();
+      shoot_latency_far_ = yaml["shoot_latency_far"].as<double>();
+      shoot_latency_near_dist_ = yaml["shoot_latency_near_dist"].as<double>();
+      shoot_latency_far_dist_ = yaml["shoot_latency_far_dist"].as<double>();
+      shoot_latency_by_dist_ = std::abs(shoot_latency_far_dist_ - shoot_latency_near_dist_) > 0.1;
+      if (shoot_latency_by_dist_)
+        tools::logger()->warn("[Planner] shoot_latency 按距离插值: {:.1f}m={:.1f}ms, {:.1f}m={:.1f}ms",
+                              shoot_latency_near_dist_, shoot_latency_near_ * 1e3, shoot_latency_far_dist_, shoot_latency_far_ * 1e3);
+    }
     high_spin_armor_tolerance_ = yaml["high_spin_armor_tolerance"] ? yaml["high_spin_armor_tolerance"].as<double>() : 0.0;
+    high_spin_armor_tolerance_slow_ = yaml["high_spin_armor_tolerance_slow"] ? yaml["high_spin_armor_tolerance_slow"].as<double>() : 0.0;
+    high_spin_window_vyaw_slow_ = yaml["high_spin_window_vyaw_slow"] ? yaml["high_spin_window_vyaw_slow"].as<double>() : 3.0;
+    high_spin_window_vyaw_fast_ = yaml["high_spin_window_vyaw_fast"] ? yaml["high_spin_window_vyaw_fast"].as<double>() : 7.0;
+    if (high_spin_armor_tolerance_slow_ > 0.0)
+      tools::logger()->warn("[Planner] 高速窗口按转速插值: <= {:.1f}rad/s 用 {:.0f}mm, >= {:.1f}rad/s 用 {:.0f}mm",
+                            high_spin_window_vyaw_slow_, high_spin_armor_tolerance_slow_ * 1e3,
+                            high_spin_window_vyaw_fast_, high_spin_armor_tolerance_ * 1e3);
     tools::logger()->warn("[Planner] 出膛延迟补偿 shoot_latency={:.1f}ms, 高速开火窗口宽度={:.0f}mm (0=沿用 small_armor_tolerance)",
                           shoot_latency_ * 1e3, high_spin_armor_tolerance_ * 1e3);
     // 缺省值 = 原来写死的 60 / leaving_angle, 不配置时行为不变。
@@ -58,6 +79,10 @@ namespace auto_aim
       tools::logger()->warn("[Planner] 快慢判定用低通转速, 时间常数 {:.2f}s (分界仍是 90 deg/s)", spin_select_tau_);
     if (yaml["low_speed_yaw_step_limit_deg"])
       low_speed_yaw_step_limit_ = yaml["low_speed_yaw_step_limit_deg"].as<double>() / 57.3;
+    low_speed_yaw_jump_ = yaml["low_speed_yaw_jump_deg"] ? yaml["low_speed_yaw_jump_deg"].as<double>() / 57.3 : 0.0;
+    if (low_speed_yaw_jump_ > 0.0)
+      tools::logger()->warn("[Planner] 低速 yaw 只平滑跳变: 单周期变化 > {:.2f} 度才算跳变, 以 {:.3f} 度/周期过渡; 连续运动不限速",
+                            low_speed_yaw_jump_ * 57.3, low_speed_yaw_step_limit_ * 57.3);
     if (laser_mode_)
       tools::logger()->warn("[Planner] 激光模式: pitch_mode={} (0直线/1弹道/2直线+偏移), 开火判定预测 +{:.1f}ms。上真弹前必须关掉!", laser_pitch_mode_, laser_latency_ * 1e3);
 
@@ -323,6 +348,20 @@ namespace auto_aim
     // 不能在这里再次按最近距离选另一块板，否则会出现“瞄旧板、按新板开火”。
     const auto ekf_x = target.ekf_x();
     const bool high_spin = is_high_spin(target);
+
+    // ★2026-10-04 高速反陀螺: 开火判定锁定 rbaim() 选中的那块板(fire_lock_armor_id_), 不再按最近距离选。
+    //   【原因】这里的 target 已经往前预测了 laser_latency + shoot_latency(+fly_time 已在 rbplan 入口预测),
+    //   9.6rad/s 时总提前量 ~100ms 以上, 板要转 ~55 度, 超过相邻两板间隔的一半(45 度)。
+    //   按"最近距离"选板时, 一半的时候选到的是下一块板, 日志 13-49-57 高速段下令时 face
+    //   一半在 -40 度、一半在 +42 度, 后者就是按错板开火, 弹丸落在板转走的一侧(偏右)。
+    //   中速 8.1rad/s 时提前量还不到 45 度, 所以中速没事。
+    //   锁定后, 判定的始终是云台正在等的那块板: 它预测到弹丸到达时刻有没有转进窗口。
+    if (high_spin && fire_lock_armor_id_ >= 0 &&
+        fire_lock_armor_id_ < static_cast<int>(armor_xyza.size()))
+    {
+      selected_id = fire_lock_armor_id_;
+      target_armor_xyza = armor_xyza[selected_id];
+    }
     if (!high_spin && target.last_id >= 0 &&
         target.last_id < static_cast<int>(armor_xyza.size()))
     {
@@ -368,7 +407,21 @@ namespace auto_aim
     //   两发首尾落点离中心最多 ±5cm, 留 1.75cm 给散布, 不出板;
     //   8.5rad/s / r=0.29m 时窗口 ~40ms, 刚好两发; 转得更快只剩一发, 转得慢可能三发, 都不会打出板。
     if (high_spin && high_spin_armor_tolerance_ > 0.0 && target.armor_type != ArmorType::big)
+    {
       shoot_range = high_spin_armor_tolerance_;
+      // ★2026-10-05 高速分支窗口按转速插值(yaml high_spin_armor_tolerance_slow + high_spin_window_vyaw_slow/fast)。
+      //   原来高速分支(|vyaw|>=2)一律用 high_spin_armor_tolerance(调好的 0.025 是给 7rad/s+ 一块板一发用的)。
+      //   日志 14-23-33: 2.9rad/s 时 ±1.25cm 窗口板扫过只有 ~30ms, 电控 25Hz(40ms) 连发不起来, 0~1 发。
+      //   转速 <= vyaw_slow 用宽窗口(连发), >= vyaw_fast 用原窄窗口(一发), 中间线性过渡。
+      //   宽窗口上限仍受装甲板宽度约束(小板宽 135mm), 不会打出板。
+      if (high_spin_armor_tolerance_slow_ > 0.0 && high_spin_window_vyaw_fast_ > high_spin_window_vyaw_slow_)
+      {
+        const double v = std::abs(target.ekf_x()(7));
+        double k = (v - high_spin_window_vyaw_slow_) / (high_spin_window_vyaw_fast_ - high_spin_window_vyaw_slow_);
+        k = std::clamp(k, 0.0, 1.0);
+        shoot_range = high_spin_armor_tolerance_slow_ + k * (high_spin_armor_tolerance_ - high_spin_armor_tolerance_slow_);
+      }
+    }
 
     if (target.name == ArmorName::base || target.name == ArmorName::outpost) shoot_range = tower_and_base_armor_tolerance_;
 
@@ -498,6 +551,7 @@ namespace auto_aim
 
   Plan Planner::rbplan(Target target, double bullet_speed, double gimbal_yaw)
   {
+    target.predict_extrap_ = true;  // ★2026-10-05 外推副本: 套用平移速度死区(yaml predict_v_deadband), 不影响 tracker 里的 EKF
     update_spin_select(target);
     const bool spin_high_now = is_high_spin(target);
     const auto spin_now_t = std::chrono::steady_clock::now();
@@ -621,6 +675,9 @@ namespace auto_aim
     {
       Target target_now = target;
       rbaim(target_now, bullet_speed);
+      // ★2026-10-04 这一次 rbaim 用的是"当前应瞄时刻"(已 predict fly_time)的目标,
+      //   它选中的高速瞄准板就是本周期云台真正在等的那块板, 锁下来给 rbShoot 用。
+      fire_lock_armor_id_ = rbaim_high_spin_best_id_;
     }
 
     // ★2026-09-27 反陀螺模式绕过 MPC, 直接发瞄准点, 速度/加速度前馈置 0。
@@ -662,14 +719,46 @@ namespace auto_aim
       if (!yaw_command_initialized_ || tools::delta_time(now_t, last_yaw_command_t_) > 0.2)
       {
         last_yaw_command_ = plan.yaw;
+        last_raw_yaw_ = plan.yaw;
+        yaw_jump_offset_ = 0.0;
         yaw_command_initialized_ = true;
       }
-      const double yaw_delta = tools::limit_rad(plan.yaw - last_yaw_command_);
-      if (std::abs(yaw_delta) > low_speed_yaw_step_limit_)
+      if (low_speed_yaw_jump_ > 0.0)
       {
-        plan.yaw = tools::limit_rad(last_yaw_command_ + std::copysign(low_speed_yaw_step_limit_, yaw_delta));
-        plan.yaw_vel = 0.0;
-        plan.yaw_acc = 0.0;
+        // ★2026-10-05 只平滑"跳变", 不限连续运动(yaml low_speed_yaw_jump_deg)。
+        //   原来是对所有 yaw 变化一律限速(0.05 度/周期 ≈ 10 度/s), 平移起步时云台被拖住:
+        //   日志 16-15-16 起步段, 指令每 44ms 只涨 0.4 度, 云台一直落后 ~0.9 度, 车速再快也一样。
+        //   【做法】输出 = 原始 yaw + 跳变补偿 yaw_jump_offset_:
+        //     原始 yaw 一个周期变化 > jump 门槛(换板)-> 把这一跳记进补偿, 输出先不动;
+        //     之后每周期补偿按 step_limit 收回 0, 云台平滑过渡到新板(防过冲, 和原来效果一样);
+        //     平移/慢速跟板时原始 yaw 每周期变化很小, 不触发, 补偿为 0, 输出 = 原始 yaw, 不限速。
+        //   补偿收回期间清掉 yaw 速度/加速度前馈(和原来一样, 防止前馈推着冲过头)。
+        const double raw_yaw = plan.yaw;
+        const double raw_delta = tools::limit_rad(raw_yaw - last_raw_yaw_);
+        if (std::abs(raw_delta) > low_speed_yaw_jump_)
+          yaw_jump_offset_ -= raw_delta;  // 吸收这一跳: 输出保持连续
+        last_raw_yaw_ = raw_yaw;
+        if (std::abs(yaw_jump_offset_) > low_speed_yaw_step_limit_)
+        {
+          yaw_jump_offset_ -= std::copysign(low_speed_yaw_step_limit_, yaw_jump_offset_);
+          plan.yaw = tools::limit_rad(raw_yaw + yaw_jump_offset_);
+          plan.yaw_vel = 0.0;
+          plan.yaw_acc = 0.0;
+        }
+        else
+        {
+          yaw_jump_offset_ = 0.0;
+        }
+      }
+      else
+      {
+        const double yaw_delta = tools::limit_rad(plan.yaw - last_yaw_command_);
+        if (std::abs(yaw_delta) > low_speed_yaw_step_limit_)
+        {
+          plan.yaw = tools::limit_rad(last_yaw_command_ + std::copysign(low_speed_yaw_step_limit_, yaw_delta));
+          plan.yaw_vel = 0.0;
+          plan.yaw_acc = 0.0;
+        }
       }
       last_yaw_command_ = plan.yaw;
       last_yaw_command_t_ = now_t;
@@ -734,7 +823,17 @@ namespace auto_aim
     //   电控 Ozone dbg_shot_lat_avg 实测 62.9ms(min 59 / max 65, 7 颗)。
     //   原来只补了 laser_latency(拍照->电控收到), 没补这一段, 8.5rad/s 时板多转 ~30 度, 弹丸偏晚。
     //   开火判定往前多预测这一段, 下令时刻 = 弹丸出膛时板正好在窗口里。
-    target.predict((laser_mode_ ? laser_latency_ : -gimbal_control_delay) + shoot_latency_);
+    // ★2026-10-05 shoot_latency 按距离线性插值(yaml shoot_latency_near/far + *_dist)。
+    //   弹速固定 24.4 不改, 但小陀螺实测 4m 要 45ms、2m 要 55ms 才打中心 ——
+    //   时间误差随距离变(可能来自阻力系数/测距/远处转速估计), 这里直接按实测两点插值补偿。
+    //   min_dist 是上面算 fly_time 用的同一个水平距离。
+    double shoot_latency_now = shoot_latency_;
+    if (shoot_latency_by_dist_)
+    {
+      const double k = (min_dist - shoot_latency_near_dist_) / (shoot_latency_far_dist_ - shoot_latency_near_dist_);
+      shoot_latency_now = std::max(0.0, shoot_latency_near_ + k * (shoot_latency_far_ - shoot_latency_near_));
+    }
+    target.predict((laser_mode_ ? laser_latency_ : -gimbal_control_delay) + shoot_latency_now);
     plan.fire = rbShoot(target, (gimbal_yaw) / 57.3 - yaw_offset_);
     if (spin_high_settle_time_ > 0.0 && spin_high_now &&
         tools::delta_time(spin_now_t, spin_high_since_) < spin_high_settle_time_)
@@ -1039,6 +1138,7 @@ namespace auto_aim
     //   注意: rbplan 在调 rbaim 之前已 predict(fly_time), 所以这里的板朝向是【子弹到达时刻】的。
     //
     // 回滚: planner.cpp.bak-antispin2 / planner.hpp.bak-antispin2
+    if (!high_spin) rbaim_high_spin_best_id_ = -1;
     if (high_spin)
     {
       const double cx = ekf_x[0];
@@ -1059,6 +1159,7 @@ namespace auto_aim
         }
       }
 
+      rbaim_high_spin_best_id_ = best;   // 记下瞄的是哪块板, rbShoot 高速开火判定用同一块
       if (best >= 0)
       {
         const auto & p = armor_xyza_list[best];

@@ -1,3 +1,4 @@
+#include <cmath>
 #include <fmt/core.h>  //字符串格式化
 
 #include <atomic>
@@ -212,8 +213,10 @@ int main(int argc, char * argv[])
           const double yaw_err = tools::limit_rad(plan.yaw - gs.yaw / 57.2958) * 57.2958;
           const double pitch_err = tx_pitch * 57.2958 + gs.pitch;
           tools::logger()->info(
-            "FIREPROBE {} face={:.1f} id={} yaw_err={:.2f} pitch_err={:.2f} vyaw={:.2f} r={:.3f} bullets={}",
-            fire_edge ? "CMD" : "SHOT", best * 57.2958, best_i, yaw_err, pitch_err, ex[7], ex[8], gs.bullet_count);
+            "FIREPROBE {} face={:.1f} id={} yaw_err={:.2f} pitch_err={:.2f} vyaw={:.2f} r={:.3f} bullets={} "
+            "cx={:.3f} cy={:.3f} vx={:.3f} vy={:.3f} v={:.3f} d={:.2f}",
+            fire_edge ? "CMD" : "SHOT", best * 57.2958, best_i, yaw_err, pitch_err, ex[7], ex[8], gs.bullet_count,
+            ex[0], ex[2], ex[1], ex[3], std::hypot(ex[1], ex[3]), std::hypot(ex[0], ex[2]));
         }
       }
       // ===== /FIREPROBE =====
@@ -494,13 +497,21 @@ int main(int argc, char * argv[])
       {
         const auto & obs = armor_xyza_list[target.last_id];
         auto gp = tools::eulers(q, 2, 1, 0)[1] * 57.2958;  // 本帧使用的云台 pitch(度)
+        // ★2026-10-05 平移诊断: EKF 中心位置/速度。状态 [x,vx,y,vy,z,vz,yaw,vyaw,r,dr,dz]
+        //   v_lat = 垂直于视线的横向速度(左右平移, 影响 yaw 提前量); v_rad = 沿视线的径向速度(靠近/远离)
+        const auto ekx = target.ekf_x();
+        const double los = std::atan2(ekx(2), ekx(0));
+        const double v_rad = ekx(1) * std::cos(los) + ekx(3) * std::sin(los);
+        const double v_lat = -ekx(1) * std::sin(los) + ekx(3) * std::cos(los);
         tools::logger()->info(
           "PROBE gp={:.2f} obs=({:.4f},{:.4f},{:.4f},a={:.2f}) aim=({:.4f},{:.4f},{:.4f},a={:.2f}) "
-          "d_obs_aim=({:.4f},{:.4f},{:.4f}) vyaw={:.3f} r={:.3f} last_id={}",
+          "d_obs_aim=({:.4f},{:.4f},{:.4f}) vyaw={:.3f} r={:.3f} last_id={} "
+          "cx={:.3f} cy={:.3f} vx={:.3f} vy={:.3f} v={:.3f} v_lat={:.3f} v_rad={:.3f}",
           gp, obs(0), obs(1), obs(2), obs(3) * 57.2958,
           aim_xyza(0), aim_xyza(1), aim_xyza(2), aim_xyza(3) * 57.2958,
           aim_xyza(0) - obs(0), aim_xyza(1) - obs(1), aim_xyza(2) - obs(2),
-          target.ekf_x()(7), target.ekf_x()(8), target.last_id);
+          target.ekf_x()(7), target.ekf_x()(8), target.last_id,
+          ekx(0), ekx(2), ekx(1), ekx(3), std::hypot(ekx(1), ekx(3)), v_lat, v_rad);
       }
       // ===== /PROBE =====
     }

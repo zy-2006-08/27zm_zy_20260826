@@ -32,9 +32,6 @@ namespace auto_aim
     if (yaml["ekf_angle_r_gate_deg"]) Target::gap_vyaw_cfg.angle_r_gate = yaml["ekf_angle_r_gate_deg"].as<double>() / 57.3;
     if (yaml["ekf_angle_r_bypass_frames"]) Target::gap_vyaw_cfg.angle_r_bypass_frames = yaml["ekf_angle_r_bypass_frames"].as<int>();
     if (yaml["ekf_angle_r_min_vyaw"]) Target::gap_vyaw_cfg.angle_r_min_vyaw = yaml["ekf_angle_r_min_vyaw"].as<double>();
-    if (yaml["predict_v_deadband"]) Target::gap_vyaw_cfg.predict_v_deadband = yaml["predict_v_deadband"].as<double>();
-    if (Target::gap_vyaw_cfg.predict_v_deadband > 0)
-      tools::logger()->warn("[Tracker] 平移速度死区 {:.2f} m/s: 低于它往前预测时不外推平移", Target::gap_vyaw_cfg.predict_v_deadband);
     if (Target::gap_vyaw_cfg.angle_r_scale != 1.0)
       tools::logger()->warn("[Tracker] 板朝向观测噪声放大 x{:.0f} (仅 |vyaw|<{:.1f} rad/s)", Target::gap_vyaw_cfg.angle_r_scale, Target::gap_vyaw_cfg.angle_r_max_vyaw);
     if (Target::gap_vyaw_cfg.vyaw_q > 0) tools::logger()->warn("[Tracker] 转速过程噪声 v2 覆盖为 {:.0f}(原 400)", Target::gap_vyaw_cfg.vyaw_q);

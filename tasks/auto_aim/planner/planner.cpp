@@ -79,10 +79,6 @@ namespace auto_aim
       tools::logger()->warn("[Planner] 快慢判定用低通转速, 时间常数 {:.2f}s (分界仍是 90 deg/s)", spin_select_tau_);
     if (yaml["low_speed_yaw_step_limit_deg"])
       low_speed_yaw_step_limit_ = yaml["low_speed_yaw_step_limit_deg"].as<double>() / 57.3;
-    low_speed_yaw_jump_ = yaml["low_speed_yaw_jump_deg"] ? yaml["low_speed_yaw_jump_deg"].as<double>() / 57.3 : 0.0;
-    if (low_speed_yaw_jump_ > 0.0)
-      tools::logger()->warn("[Planner] 低速 yaw 只平滑跳变: 单周期变化 > {:.2f} 度才算跳变, 以 {:.3f} 度/周期过渡; 连续运动不限速",
-                            low_speed_yaw_jump_ * 57.3, low_speed_yaw_step_limit_ * 57.3);
     if (laser_mode_)
       tools::logger()->warn("[Planner] 激光模式: pitch_mode={} (0直线/1弹道/2直线+偏移), 开火判定预测 +{:.1f}ms。上真弹前必须关掉!", laser_pitch_mode_, laser_latency_ * 1e3);
 
@@ -261,7 +257,7 @@ namespace auto_aim
     {
       double vz = target.ekf_x()(5);  // 获取当前前哨站中心Z轴坐标
       // double delta_z = std::abs(current_z - outpost_z_baseline_);
-      auto now = std::chrono::steady_clock::now();
+      auto now = this->now();
 
       // 如果Z轴变化幅度大于指定阈值（例如0.05米），重置基准和计时器，并禁止开火
       if (vz > 0.09)
@@ -382,7 +378,7 @@ namespace auto_aim
     // feedback_yaw = gimbal_yaw;
 
     // ★2026-09-28 开火迟滞: 换板 / 丢目标一段时间后, 锁存状态作废, 重新走"进入窗口 + 确认"。
-    const auto fire_now_t = std::chrono::steady_clock::now();
+    const auto fire_now_t = now();
     const bool armor_switched =
       std::abs(tools::limit_rad(target_yaw - fire_last_armor_yaw_)) > 30. / 57.3;
     const bool target_lost = tools::delta_time(fire_now_t, fire_last_call_t_) > 0.1;
@@ -511,7 +507,7 @@ namespace auto_aim
   void Planner::update_spin_select(const Target & target)
   {
     const double v = std::abs(target.ekf_x()(7));
-    const auto now = std::chrono::steady_clock::now();
+    const auto now = this->now();
     if (!spin_select_init_ || spin_select_tau_ <= 0.0)
     {
       spin_select_vyaw_ = v;
@@ -551,10 +547,9 @@ namespace auto_aim
 
   Plan Planner::rbplan(Target target, double bullet_speed, double gimbal_yaw)
   {
-    target.predict_extrap_ = true;  // ★2026-10-05 外推副本: 套用平移速度死区(yaml predict_v_deadband), 不影响 tracker 里的 EKF
     update_spin_select(target);
     const bool spin_high_now = is_high_spin(target);
-    const auto spin_now_t = std::chrono::steady_clock::now();
+    const auto spin_now_t = now();
     if (spin_high_now && !spin_high_prev_)
     {
       spin_high_since_ = spin_now_t;
@@ -714,51 +709,19 @@ namespace auto_aim
     //   不会从丢失前的旧角度慢慢挪过去。
     if (!high_spin_plan)
     {
-      const auto now_t = std::chrono::steady_clock::now();
+      const auto now_t = now();
       // 超过 0.2s 没调用(丢目标/没控制)就重新初始化, 直接用当前指令, 不做限幅。
       if (!yaw_command_initialized_ || tools::delta_time(now_t, last_yaw_command_t_) > 0.2)
       {
         last_yaw_command_ = plan.yaw;
-        last_raw_yaw_ = plan.yaw;
-        yaw_jump_offset_ = 0.0;
         yaw_command_initialized_ = true;
       }
-      if (low_speed_yaw_jump_ > 0.0)
+      const double yaw_delta = tools::limit_rad(plan.yaw - last_yaw_command_);
+      if (std::abs(yaw_delta) > low_speed_yaw_step_limit_)
       {
-        // ★2026-10-05 只平滑"跳变", 不限连续运动(yaml low_speed_yaw_jump_deg)。
-        //   原来是对所有 yaw 变化一律限速(0.05 度/周期 ≈ 10 度/s), 平移起步时云台被拖住:
-        //   日志 16-15-16 起步段, 指令每 44ms 只涨 0.4 度, 云台一直落后 ~0.9 度, 车速再快也一样。
-        //   【做法】输出 = 原始 yaw + 跳变补偿 yaw_jump_offset_:
-        //     原始 yaw 一个周期变化 > jump 门槛(换板)-> 把这一跳记进补偿, 输出先不动;
-        //     之后每周期补偿按 step_limit 收回 0, 云台平滑过渡到新板(防过冲, 和原来效果一样);
-        //     平移/慢速跟板时原始 yaw 每周期变化很小, 不触发, 补偿为 0, 输出 = 原始 yaw, 不限速。
-        //   补偿收回期间清掉 yaw 速度/加速度前馈(和原来一样, 防止前馈推着冲过头)。
-        const double raw_yaw = plan.yaw;
-        const double raw_delta = tools::limit_rad(raw_yaw - last_raw_yaw_);
-        if (std::abs(raw_delta) > low_speed_yaw_jump_)
-          yaw_jump_offset_ -= raw_delta;  // 吸收这一跳: 输出保持连续
-        last_raw_yaw_ = raw_yaw;
-        if (std::abs(yaw_jump_offset_) > low_speed_yaw_step_limit_)
-        {
-          yaw_jump_offset_ -= std::copysign(low_speed_yaw_step_limit_, yaw_jump_offset_);
-          plan.yaw = tools::limit_rad(raw_yaw + yaw_jump_offset_);
-          plan.yaw_vel = 0.0;
-          plan.yaw_acc = 0.0;
-        }
-        else
-        {
-          yaw_jump_offset_ = 0.0;
-        }
-      }
-      else
-      {
-        const double yaw_delta = tools::limit_rad(plan.yaw - last_yaw_command_);
-        if (std::abs(yaw_delta) > low_speed_yaw_step_limit_)
-        {
-          plan.yaw = tools::limit_rad(last_yaw_command_ + std::copysign(low_speed_yaw_step_limit_, yaw_delta));
-          plan.yaw_vel = 0.0;
-          plan.yaw_acc = 0.0;
-        }
+        plan.yaw = tools::limit_rad(last_yaw_command_ + std::copysign(low_speed_yaw_step_limit_, yaw_delta));
+        plan.yaw_vel = 0.0;
+        plan.yaw_acc = 0.0;
       }
       last_yaw_command_ = plan.yaw;
       last_yaw_command_t_ = now_t;
@@ -773,7 +736,7 @@ namespace auto_aim
     {
       double vz = target.ekf_x()(5);  // 获取当前前哨站中心Z轴坐标
       // double delta_z = std::abs(current_z - outpost_z_baseline_);
-      auto now = std::chrono::steady_clock::now();
+      auto now = this->now();
 
       // 如果Z轴变化幅度大于指定阈值（例如0.05米），重置基准和计时器，并禁止开火
       if (vz > 0.09)
@@ -934,7 +897,7 @@ namespace auto_aim
     {
       double vz = target.ekf_x()(5);  // 获取当前前哨站中心Z轴坐标
       // double delta_z = std::abs(current_z - outpost_z_baseline_);
-      auto now = std::chrono::steady_clock::now();
+      auto now = this->now();
 
       // 如果Z轴变化幅度大于指定阈值（例如0.05米），重置基准和计时器，并禁止开火
       if (vz > 0.01)

@@ -154,19 +154,6 @@ namespace auto_aim
     F(4, 5) = dt;
     F(6, 7) = dt;
 
-    // ★2026-10-05 平移速度死区: 车停下后 EKF 的 vx/vy 要 ~1s 才衰减到 0(日志 15-54-45: 停车后
-    //   还残留 0.1~0.4 m/s), 往前预测 ~0.2s 时瞄准点就继续往前滑, 云台跟着动。
-    //   这里只在"往未来外推"(dt>0)时生效: 合速度低于死区就不外推平移, 旋转照常外推。
-    //   EKF 自身每帧的 predict 也会走这里 —— 那样会让速度永远估不起来, 所以只对
-    //   planner 的外推副本生效: 用 predict_extrap_ 标记(由 planner 调用 predict 前置位)。
-    if (predict_extrap_ && dt > 0 && gap_vyaw_cfg.predict_v_deadband > 0 &&
-        std::hypot(ekf_.x[1], ekf_.x[3]) < gap_vyaw_cfg.predict_v_deadband)
-    {
-      F(0, 1) = 0;
-      F(2, 3) = 0;
-      F(4, 5) = 0;
-    }
-
     double v1, v2;
     if (name == ArmorName::outpost)
     {

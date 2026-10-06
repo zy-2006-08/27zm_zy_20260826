@@ -299,3 +299,5 @@ if(RERUN_AVAILABLE)
     target_compile_definitions(detect_test PRIVATE USE_RERUN)
 endif()
 
+add_executable(replay_dump tests/replay_dump.cpp)
+target_link_libraries(replay_dump ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim tools io)

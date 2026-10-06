@@ -45,6 +45,13 @@ namespace auto_aim
     double aim_target_yaw;
     Planner(const std::string & config_path);
 
+    // 回放用: 设了 clock_override 就用它当"现在", 否则用系统时钟。车上从不设置 -> 行为不变。
+    std::optional<std::chrono::steady_clock::time_point> clock_override;
+    std::chrono::steady_clock::time_point now() const
+    {
+      return clock_override ? *clock_override : std::chrono::steady_clock::now();
+    }
+
     Plan plan(Target target, double bullet_speed);
     inline Plan plan(std::optional<Target> target, double bullet_speed, double gimbal_yaw = 0, ShootStrategy strategy = Dynamics)
     {
@@ -54,7 +61,7 @@ namespace auto_aim
 
       if (std::abs(target->ekf_x()[7]) > decision_speed_) tools::logger()->warn("std::abs(target->ekf_x()[7]) > {}", decision_speed_);
 
-      auto future = std::chrono::steady_clock::now() + std::chrono::microseconds(int(delay_time * 1e6));
+      auto future = now() + std::chrono::microseconds(int(delay_time * 1e6));
 
       target->predict(future);
 
@@ -158,9 +165,6 @@ namespace auto_aim
 
     // 低速换板时限制视觉 yaw 指令单周期跳变，避免新旧装甲板切换造成甩过再回正。
     double low_speed_yaw_step_limit_ = 1.0 / 57.3;
-    double low_speed_yaw_jump_ = 0.0;   // rad, >0 时低速 yaw 只平滑"跳变"(单周期变化超过它), 连续运动不限速
-    double last_raw_yaw_ = 0.0;        // 上一周期限幅前的原始 yaw 指令
-    double yaw_jump_offset_ = 0.0;     // 正在收回的跳变补偿(rad)
     bool yaw_command_initialized_ = false;
     double last_yaw_command_ = 0.0;
     std::chrono::steady_clock::time_point last_yaw_command_t_{};

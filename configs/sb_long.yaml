@@ -253,12 +253,7 @@ high_spin_armor_tolerance: 0.025 # m
 high_spin_armor_tolerance_slow: 0.08 # m
 high_spin_window_vyaw_slow: 3.0 # rad/s
 high_spin_window_vyaw_fast: 6.5 # rad/s
-# ★2026-10-05 平移速度死区(m/s): 车中心合速度低于它时, 往前预测不外推平移(停车后云台不再往前滑)。0 = 关闭
-predict_v_deadband: 0.15 # m/s
 low_speed_yaw_step_limit_deg: 0.05 # degree/plan周期 低速yaw最大变化量
-# ★2026-10-05 低速 yaw 只平滑"跳变"(换板): 单周期(~5ms)原始 yaw 变化 > 这个度数才算跳变, 按上面 step_limit 平滑过渡;
-#   平移/慢速跟板等连续运动不限速(原来一律限到 10 度/s, 平移起步跟不上)。0 = 回到原来的一律限速。
-low_speed_yaw_jump_deg: 0.5 # degree
 # fire_exit_scale: 1
 # fire_confirm_time: 0
 tower_and_base_armor_tolerance_: 0.10  # 26赛季前哨站和基地装甲板检测宽度2 

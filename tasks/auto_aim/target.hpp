@@ -38,6 +38,19 @@ namespace auto_aim
 
     void predict(std::chrono::steady_clock::time_point t);
     void predict(double dt);
+    // ★2026-10-07 平移加速度补偿: 车中心位置 += 0.5*a*T^2, 速度 += a*T (只动 x/y, 不动朝向/转速)
+    void apply_center_accel(double ax, double ay, double T);
+
+    // ★2026-10-07 观测拟合: 最近的原始观测(同一块板, 换板就清空), 给 planner 平移时直接拟合用
+    struct ObsSample
+    {
+      std::chrono::steady_clock::time_point t;
+      double x, y;
+    };
+    std::vector<ObsSample> obs_hist;  // 按时间顺序, 只留最近 0.5s
+    std::chrono::steady_clock::time_point last_obs_t() const { return t_; }
+    // 车中心整体平移 (dx, dy), 速度加 (dvx, dvy); 只动 x/y
+    void shift_center(double dx, double dy, double dvx, double dvy);
     void update(const Armor & armor);
 
     Eigen::VectorXd ekf_x() const;
@@ -99,6 +112,7 @@ namespace auto_aim
       double gap_s = 0.06;      // 距上次观测超过这么久, 才算"空窗后第一帧"
       double max_dvyaw = 0.3;   // 这一帧 vyaw 最多改多少(rad/s)
       double vyaw_q = 0;        // >0 时覆盖转速过程噪声 v2(原值 400); 0 = 原行为
+      double trans_q = 0;       // >0 时覆盖平移过程噪声 v1(原值 100); 0 = 原行为
       // ★板朝向观测噪声 r2_angle 的整体放大倍数, 所有帧生效, 1.0 = 原行为。
       //   静止实测: 角点水平偏 1 像素, PnP 朝向就差约 10 度; 正对静止时 PnP 原始解 -3.5 度,
       //   optimize_yaw 后变 -10.9 度。朝向观测本身噪声远大于原 R 设定, 应少信它、多信方位角。

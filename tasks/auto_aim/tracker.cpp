@@ -26,6 +26,8 @@ namespace auto_aim
     if (yaml["ekf_gap_s"]) Target::gap_vyaw_cfg.gap_s = yaml["ekf_gap_s"].as<double>();
     if (yaml["ekf_gap_max_dvyaw"]) Target::gap_vyaw_cfg.max_dvyaw = yaml["ekf_gap_max_dvyaw"].as<double>();
     if (yaml["ekf_vyaw_q"]) Target::gap_vyaw_cfg.vyaw_q = yaml["ekf_vyaw_q"].as<double>();
+    if (yaml["ekf_trans_q"]) Target::gap_vyaw_cfg.trans_q = yaml["ekf_trans_q"].as<double>();
+    if (Target::gap_vyaw_cfg.trans_q > 0) tools::logger()->warn("[Tracker] 平移过程噪声 v1 覆盖为 {:.0f}(原 100)", Target::gap_vyaw_cfg.trans_q);
     if (yaml["ekf_angle_r_scale"]) Target::gap_vyaw_cfg.angle_r_scale = yaml["ekf_angle_r_scale"].as<double>();
     if (yaml["ekf_angle_r_max_vyaw"]) Target::gap_vyaw_cfg.angle_r_max_vyaw = yaml["ekf_angle_r_max_vyaw"].as<double>();
     if (yaml["ekf_angle_r_warmup"]) Target::gap_vyaw_cfg.angle_r_warmup = yaml["ekf_angle_r_warmup"].as<int>();

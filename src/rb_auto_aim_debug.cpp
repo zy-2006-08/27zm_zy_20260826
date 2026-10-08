@@ -4,9 +4,9 @@
 #include <atomic>
 #include <chrono>              // C++ 的时间库
 #include <nlohmann/json.hpp>   //JSON 库。JSON 就是一种文本格式的数据打包方式，长这样：{"yaw": 12.3, "pitch": 4.5}。这里用来把调试数据打包，发给画曲线的工具（类似上位机示波器）。
-#include <opencv2/opencv.hpp>  //OpenCV，图像处理库。OpenCV 是什么：一个装满了"图像操作函数"的工具箱。读图、画线、画圆、缩放、显示窗口，全靠它
+#include <opencv2/opencv.hpp>  //OpenCV，图像处理库。OpenCV 是什么：一个装满了" 图像操作函数"的工具箱。读图、画线、画圆、缩放、显示窗口，全靠它
 #include <thread>              //线程库
-
+ 
 //#include <xxx> 是"系统/第三方库"，#include "xxx" 是"本工程自己的文件"。
 
 #include "io/camera.hpp"                       // 第 9 行：相机驱动，负责从大恒相机取图

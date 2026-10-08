@@ -79,6 +79,81 @@ namespace auto_aim
       tools::logger()->warn("[Planner] 快慢判定用低通转速, 时间常数 {:.2f}s (分界仍是 90 deg/s)", spin_select_tau_);
     if (yaml["low_speed_yaw_step_limit_deg"])
       low_speed_yaw_step_limit_ = yaml["low_speed_yaw_step_limit_deg"].as<double>() / 57.3;
+    // 可选键, 缺省 = A 版行为(每周期限幅)
+    low_speed_yaw_limit_switch_only_ = yaml["low_speed_yaw_limit_switch_only"] ? yaml["low_speed_yaw_limit_switch_only"].as<bool>() : false;
+    if (yaml["low_speed_yaw_switch_jump_deg"])
+      low_speed_yaw_switch_jump_ = yaml["low_speed_yaw_switch_jump_deg"].as<double>() / 57.3;
+    low_speed_yaw_step_follow_center_ = yaml["low_speed_yaw_step_follow_center"] ? yaml["low_speed_yaw_step_follow_center"].as<bool>() : false;
+    low_speed_yaw_vel_follow_cmd_ = yaml["low_speed_yaw_vel_follow_cmd"] ? yaml["low_speed_yaw_vel_follow_cmd"].as<bool>() : false;
+    if (low_speed_yaw_vel_follow_cmd_)
+      tools::logger()->warn("[Planner] 低速限幅时 yaw 速度前馈 = 指令自己的角速度(不再清零), 仅平移(不在转)时生效");
+    if (yaml["low_speed_yaw_follow_min_speed"]) low_speed_yaw_follow_min_speed_ = yaml["low_speed_yaw_follow_min_speed"].as<double>();
+    if (yaml["low_speed_yaw_follow_gain"]) low_speed_yaw_follow_gain_ = yaml["low_speed_yaw_follow_gain"].as<double>();
+    if (low_speed_yaw_step_follow_center_)
+      tools::logger()->warn("[Planner] 低速 yaw 限幅跟随车中心方位变化(平移时不被钉住), 仅平移(不在转)时生效");
+    if (yaml["low_speed_yaw_spin_vyaw"])
+      low_speed_yaw_spin_vyaw_ = yaml["low_speed_yaw_spin_vyaw"].as<double>();
+    if (yaml["low_speed_yaw_spin_hold"])
+      low_speed_yaw_spin_hold_ = yaml["low_speed_yaw_spin_hold"].as<double>();
+    if (yaml["low_speed_yaw_vel_limit_deg"])
+      low_speed_yaw_vel_limit_ = yaml["low_speed_yaw_vel_limit_deg"].as<double>() / 57.3;
+    high_spin_center_vel_ff_ = yaml["high_spin_center_vel_ff"] ? yaml["high_spin_center_vel_ff"].as<bool>() : false;
+    if (yaml["high_spin_center_ff_min_speed"])
+      high_spin_center_ff_min_speed_ = yaml["high_spin_center_ff_min_speed"].as<double>();
+    if (high_spin_center_vel_ff_)
+      tools::logger()->warn("[Planner] 高速反陀螺+平移: yaw 速度前馈 = 车中心方位角速度(车速 >= {:.2f}m/s, 上限 {:.0f} deg/s)",
+                            high_spin_center_ff_min_speed_, low_speed_yaw_vel_limit_ * 57.3);
+    high_spin_left_shift_ = yaml["high_spin_left_shift"] ? yaml["high_spin_left_shift"].as<double>() : 0.0;
+    if (yaml["high_spin_left_shift_min_speed"])
+      high_spin_left_shift_min_speed_ = yaml["high_spin_left_shift_min_speed"].as<double>();
+    if (high_spin_left_shift_ != 0.0)
+      tools::logger()->warn("[Planner] 高速小陀螺+往左平移: 开火窗口往右挪 {:.1f}mm(往左横向车速 >= {:.2f}m/s)",
+                            high_spin_left_shift_ * 1000.0, high_spin_left_shift_min_speed_);
+    // 可选键, 缺省 0 = 关(A 版行为)
+    trans_armor_tolerance_ = yaml["trans_armor_tolerance"] ? yaml["trans_armor_tolerance"].as<double>() : 0.0;
+    trans_fire_speed_ = yaml["trans_fire_speed"] ? yaml["trans_fire_speed"].as<double>() : 0.3;
+    fire_brake_decel_ = yaml["fire_brake_decel"] ? yaml["fire_brake_decel"].as<double>() : 0.0;
+    fire_brake_hold_ = yaml["fire_brake_hold"] ? yaml["fire_brake_hold"].as<double>() : 0.15;
+    fire_decel_ratio_ = yaml["fire_decel_ratio"] ? yaml["fire_decel_ratio"].as<double>() : 0.0;
+    fire_decel_window_ = yaml["fire_decel_window"] ? yaml["fire_decel_window"].as<double>() : 0.1;
+    fire_gimbal_lead_ = yaml["fire_gimbal_lead"] ? yaml["fire_gimbal_lead"].as<double>() : 0.0;
+    fire_cmd_gimbal_tol_ = yaml["fire_cmd_gimbal_tol_deg"] ? yaml["fire_cmd_gimbal_tol_deg"].as<double>() / 57.3 : 0.0;
+    fire_trans_aim_tol_ = yaml["fire_trans_aim_tol_deg"] ? yaml["fire_trans_aim_tol_deg"].as<double>() / 57.3 : 0.0;
+    if (yaml["fire_trans_hold_scale"]) fire_trans_hold_scale_ = std::max(1.0, yaml["fire_trans_hold_scale"].as<double>());
+    if (fire_trans_aim_tol_ > 0.0)
+      tools::logger()->warn("[Planner] 平移开火第四版: 指令离板 <= {:.2f} deg 且云台离指令 <= {:.2f} deg 就开火(开火中放宽 x{:.2f})",
+                            fire_trans_aim_tol_ * 57.3, fire_cmd_gimbal_tol_ * 57.3, fire_trans_hold_scale_);
+    trans_accel_gain_ = yaml["trans_accel_gain"] ? yaml["trans_accel_gain"].as<double>() : 0.0;
+    trans_accel_window_ = yaml["trans_accel_window"] ? yaml["trans_accel_window"].as<double>() : 0.1;
+    trans_accel_max_ = yaml["trans_accel_max"] ? yaml["trans_accel_max"].as<double>() : 4.0;
+    trans_accel_extra_time_ = yaml["trans_accel_extra_time"] ? yaml["trans_accel_extra_time"].as<double>() : 0.0;
+    trans_accel_deadzone_ = yaml["trans_accel_deadzone"] ? yaml["trans_accel_deadzone"].as<double>() : 1.0;
+    obs_fit_enable_ = yaml["obs_fit_enable"] ? yaml["obs_fit_enable"].as<bool>() : false;
+    if (yaml["obs_fit_window"]) obs_fit_window_ = yaml["obs_fit_window"].as<double>();
+    if (yaml["obs_fit_order"]) obs_fit_order_ = std::clamp(yaml["obs_fit_order"].as<int>(), 1, 2);
+    if (yaml["obs_fit_max_shift"]) obs_fit_max_shift_ = yaml["obs_fit_max_shift"].as<double>();
+    if (yaml["obs_fit_max_dv"]) obs_fit_max_dv_ = yaml["obs_fit_max_dv"].as<double>();
+    if (yaml["obs_fit_smooth_tau"]) obs_fit_smooth_tau_ = yaml["obs_fit_smooth_tau"].as<double>();
+    if (yaml["obs_fit_blend"]) obs_fit_blend_ = std::clamp(yaml["obs_fit_blend"].as<double>(), 0.0, 1.0);
+    if (yaml["obs_fit_fast_thr"]) obs_fit_fast_thr_ = yaml["obs_fit_fast_thr"].as<double>();
+    if (yaml["obs_fit_vel_only"]) obs_fit_vel_only_ = yaml["obs_fit_vel_only"].as<bool>();
+    if (obs_fit_enable_)
+      tools::logger()->warn("[Planner] 平移观测拟合: {} 阶, 窗口 {:.0f}ms, 修正上限 {:.2f}m / {:.1f}m/s",
+                            obs_fit_order_, obs_fit_window_ * 1e3, obs_fit_max_shift_, obs_fit_max_dv_);
+    if (trans_accel_gain_ > 0.0)
+      tools::logger()->warn("[Planner] 平移加速度补偿: gain={:.2f} 窗口 {:.0f}ms 上限 {:.1f}m/s2 额外时间 {:.0f}ms",
+                            trans_accel_gain_, trans_accel_window_ * 1e3, trans_accel_max_, trans_accel_extra_time_ * 1e3);
+    if (fire_cmd_gimbal_tol_ > 0.0)
+      tools::logger()->warn("[Planner] 平移开火第三版: 按指令判窗口, 云台离指令 < {:.2f} deg 就开火", fire_cmd_gimbal_tol_ * 57.3);
+    if (fire_decel_ratio_ > 0.0 || fire_gimbal_lead_ > 0.0)
+      tools::logger()->warn("[Planner] 平移开火第二版: {:.0f}ms 内车速掉 {:.0f}% 不开火; 平移时按云台 {:.0f}ms 后的角度判开火 (0=关)",
+                            fire_decel_window_ * 1e3, fire_decel_ratio_ * 100, fire_gimbal_lead_ * 1e3);
+    if (trans_armor_tolerance_ > 0.0 || fire_brake_decel_ > 0.0)
+      tools::logger()->warn("[Planner] 平移开火: 车速>={:.2f}m/s 窗口 {:.0f}mm; 急刹(减速>{:.1f}m/s2)后 {:.0f}ms 不开火 (0=关)",
+                            trans_fire_speed_, trans_armor_tolerance_ * 1e3, fire_brake_decel_, fire_brake_hold_ * 1e3);
+    if (low_speed_yaw_limit_switch_only_)
+      tools::logger()->warn("[Planner] 低速 yaw 限幅只在换板时生效(第二版): 换板跳变阈值 {:.2f} deg, |vyaw|>={:.2f}rad/s 走 A 版(保持 {:.2f}s), 速度前馈上限 {:.0f} deg/s",
+                            low_speed_yaw_switch_jump_ * 57.3, low_speed_yaw_spin_vyaw_, low_speed_yaw_spin_hold_, low_speed_yaw_vel_limit_ * 57.3);
     if (laser_mode_)
       tools::logger()->warn("[Planner] 激光模式: pitch_mode={} (0直线/1弹道/2直线+偏移), 开火判定预测 +{:.1f}ms。上真弹前必须关掉!", laser_pitch_mode_, laser_latency_ * 1e3);
 
@@ -419,6 +494,80 @@ namespace auto_aim
       }
     }
 
+    // ★2026-10-07 平移开火窗口放宽 + 急刹不开火(yaml trans_armor_tolerance / fire_brake_decel, 0 = 关)。
+    //   【窗口】small_armor_tolerance 0.03m(板面 ±1.5cm), 平移时瞄准有 0.2~2 度的残余误差, 几乎进不了窗口。
+    //   平移(车速 >= trans_fire_speed 且 |vyaw| < low_speed_yaw_spin_vyaw, 和 yaw 放开的判据一致)时换成更宽的窗口;
+    //   小板宽 135mm, 0.08m(±4cm) 仍在板内。慢速/高速小陀螺不受影响。
+    //   【急刹】车速 50ms 内掉得比 fire_brake_decel(m/s^2) 快, 认为在急刹, fire_brake_hold 秒内不开火:
+    //   急刹时 EKF 的速度还没跟上, 预测点往前冲, 这时打出去的弹基本落在车前面。
+    //   回放统计: 减速 > 3m/s^2 在平移段占 2~11% 周期, 静止/慢速小陀螺 < 3%。
+    // 观测拟合开着时, target 的速度已被每周期改写(会跳), 急刹/减速判断改用修正前 EKF 自己的车速
+    const double center_speed = fire_raw_speed_valid_ ? fire_raw_speed_ : std::hypot(ekf_x[1], ekf_x[3]);
+    const bool translating = !high_spin && center_speed >= trans_fire_speed_ &&
+                             std::abs(ekf_x[7]) < low_speed_yaw_spin_vyaw_;
+    if (translating && trans_armor_tolerance_ > 0.0 && target.armor_type != ArmorType::big)
+      shoot_range = std::max(shoot_range, trans_armor_tolerance_);
+
+    bool braking = false;
+    if (fire_brake_decel_ > 0.0)
+    {
+      if (target_lost) fire_speed_hist_.clear();
+      fire_speed_hist_.push_back({fire_now_t, center_speed});
+      while (fire_speed_hist_.size() > 1 && tools::delta_time(fire_now_t, fire_speed_hist_.front().first) > 0.05)
+        fire_speed_hist_.pop_front();
+      const auto & old = fire_speed_hist_.front();
+      const double dt = tools::delta_time(fire_now_t, old.first);
+      if (dt > 0.03 && old.second > 0.3 && (old.second - center_speed) / dt > fire_brake_decel_)
+        fire_brake_until_t_ = fire_now_t + std::chrono::microseconds(static_cast<int64_t>(fire_brake_hold_ * 1e6));
+      braking = !high_spin && fire_now_t < fire_brake_until_t_;
+    }
+    // ★2026-10-07 减速不开火(yaml fire_decel_ratio, 0 = 关): 不只拦急刹, 车速 fire_decel_window 秒内
+    //   掉了 fire_decel_ratio 以上(且原速 > trans_fire_speed)也不开火。
+    //   实车 17-51-50: 开火大多在"刚减速快停下"那一下, EKF 速度还没跟上, 瞄准点仍往前推, 落点在车前面 1~2 度。
+    //   慢慢减速(< 3m/s^2)时上面的急刹规则拦不住。
+    if (fire_decel_ratio_ > 0.0 && !high_spin)
+    {
+      if (target_lost) fire_decel_hist_.clear();
+      fire_decel_hist_.push_back({fire_now_t, center_speed});
+      while (fire_decel_hist_.size() > 1 && tools::delta_time(fire_now_t, fire_decel_hist_.front().first) > fire_decel_window_)
+        fire_decel_hist_.pop_front();
+      double vmax = 0.0;
+      for (const auto & p : fire_decel_hist_) vmax = std::max(vmax, p.second);
+      if (vmax > trans_fire_speed_ && center_speed < vmax * (1.0 - fire_decel_ratio_))
+        fire_brake_until_t_ = std::max(fire_brake_until_t_,
+                                       fire_now_t + std::chrono::microseconds(static_cast<int64_t>(fire_brake_hold_ * 1e6)));
+      braking = fire_now_t < fire_brake_until_t_;
+    }
+
+    // ★2026-10-07 平移时开火判断用"云台 fire_gimbal_lead 秒后的角度"(yaml, 0 = 关)。
+    //   实车 17-51-50: 车速 > 0.6m/s 匀速平移时云台稳定落后指令 0.5~1 度(电控跟随 ~30ms),
+    //   开火判断拿云台当前角去比, 永远差一截, 开火率 0%。
+    //   用最近两次调用的云台角算角速度, 往前外推 fire_gimbal_lead 秒, 外推量限 ±2 度防止噪声。
+    //   只在 translating(平移, 不在转)时用, 小陀螺仍用云台当前角。
+    double fire_gimbal_yaw = gimbal_yaw;
+    {
+      const double dtg = tools::delta_time(fire_now_t, fire_last_gimbal_t_);
+      if (fire_gimbal_lead_ > 0.0 && translating && !target_lost && fire_gimbal_init_ && dtg > 1e-3 && dtg < 0.05)
+      {
+        const double w = tools::limit_rad(gimbal_yaw - fire_last_gimbal_yaw_) / dtg;  // rad/s
+        const double ext = std::clamp(w * fire_gimbal_lead_, -2.0 / 57.3, 2.0 / 57.3);
+        fire_gimbal_yaw = tools::limit_rad(gimbal_yaw + ext);
+      }
+      fire_last_gimbal_yaw_ = gimbal_yaw;
+      fire_last_gimbal_t_ = fire_now_t;
+      fire_gimbal_init_ = true;
+    }
+    // ★2026-10-07 平移时按"指令"判窗口, 再要求云台离指令不远(yaml fire_cmd_gimbal_tol_deg, 0 = 关)。
+    //   实车 18-13-10: 起步/加速时云台落后指令 ~0.9 度(匀速 0.5), 上面按云台角速度外推补不够, 开火 6%。
+    //   改成: 指令(本周期发给电控的 yaw)在窗口里 = 瞄的地方是对的; |云台 - 指令| < tol = 云台快追上了。
+    //   两条同时满足就开火。开着时替代上面的云台外推。只在平移用, 小陀螺不变。
+    bool cmd_gimbal_far = false;
+    if (fire_cmd_gimbal_tol_ > 0.0 && translating && fire_cmd_yaw_valid_)
+    {
+      fire_gimbal_yaw = fire_cmd_yaw_;
+      cmd_gimbal_far = std::abs(tools::limit_rad(fire_cmd_yaw_ - gimbal_yaw)) > fire_cmd_gimbal_tol_;
+    }
+
     if (target.name == ArmorName::base || target.name == ArmorName::outpost) shoot_range = tower_and_base_armor_tolerance_;
 
     // 已经在开火: 窗口放宽到 fire_exit_scale_ 倍才判"出窗"(施密特触发器)。
@@ -439,6 +588,23 @@ namespace auto_aim
     double allow_fire_ang_min = std::min(angle_a, angle_b) - angle_c;
     allow_fire_ang_max = tools::limit_rad(allow_fire_ang_max);
     allow_fire_ang_min = tools::limit_rad(allow_fire_ang_min);
+    // ★2026-10-08 高速小陀螺 + 靶车往左平移: 开火窗口整体往右挪(yaml high_spin_left_shift, 米, 0 = 关)。
+    //   实车: 这种工况弹丸落在板左侧 1~2cm, 部分打出板。窗口宽度不变, 只挪位置:
+    //   要等板再往左多转一点(板在云台左边)才开火, 落点相对板往右移。
+    //   只在 high_spin 且往左横向车速 >= high_spin_left_shift_min_speed 时生效;
+    //   原地小陀螺 / 往右平移 / 慢速 / 不转 完全不变。v_lat > 0 = 往左(yaw 增大 = 左)。
+    if (high_spin && high_spin_left_shift_ != 0.0)
+    {
+      const double los_s = std::atan2(ekf_x[2], ekf_x[0]);
+      const double v_lat_s = -ekf_x[1] * std::sin(los_s) + ekf_x[3] * std::cos(los_s);
+      if (v_lat_s >= high_spin_left_shift_min_speed_)
+      {
+        const double dist_s = std::max(0.5, std::hypot(target_armor_xyza(0), target_armor_xyza(1)));
+        const double sh = high_spin_left_shift_ / dist_s;  // rad, 正 = 落点往右
+        allow_fire_ang_max += sh;
+        allow_fire_ang_min += sh;
+      }
+    }
 
     // pitch
     bool suggest_pitch = true;
@@ -448,8 +614,39 @@ namespace auto_aim
     }
 
     // yaw_ang_ref
-    double control_delta_angle = tools::limit_rad(atan2(target_armor_xyza(1), target_armor_xyza(0)) - gimbal_yaw);
+    double control_delta_angle = tools::limit_rad(atan2(target_armor_xyza(1), target_armor_xyza(0)) - fire_gimbal_yaw);
     suggest_fire = (control_delta_angle < allow_fire_ang_max && control_delta_angle > allow_fire_ang_min && suggest_pitch);
+    // 诊断: 记下每一道门的结果(只写成员变量, 不改行为)
+    debug_fire_gate_ = 0;
+    debug_fire_win_deg_ = (allow_fire_ang_max - allow_fire_ang_min) * 0.5 * 57.3;
+    debug_fire_delta_deg_ = control_delta_angle * 57.3;
+    debug_fire_dgim_deg_ = tools::limit_rad(fire_cmd_yaw_ - gimbal_yaw) * 57.3;
+    debug_fire_trans_ = false;
+    if (!suggest_fire) debug_fire_gate_ |= 1;               // 1 指令/枪口不在窗口
+    // ★2026-10-07 平移开火窗口改判(yaml fire_trans_aim_tol_deg, 0 = 关)。
+    //   【原因】实车 14-39-24 匀速平移: 枪口在板上 83%, 实际开火只有 25%; 不开火的周期里 84% 卡在上面的窗口判断。
+    //   窗口是拿"开火时刻(t + 链路延迟 + 出膛延迟)的板预测"去比"本周期指令(按弹丸飞行/激光提前量瞄的)",
+    //   两个不同时刻的预测平均差 1.3 度, 窗口只有 ±1.2 度, 六成周期被误判"不在窗口"。
+    //   【做法】平移时改成: 指令离板预测 <= tol(只防瞄错板/瞄飞) + 云台离指令 <= fire_cmd_gimbal_tol(上面已判)。
+    //   开火中两个门限都放宽 fire_trans_hold_scale 倍, 防止在边上来回翻。小陀螺/静止不走这里。
+    if (fire_trans_aim_tol_ > 0.0 && translating && fire_cmd_yaw_valid_ && fire_cmd_gimbal_tol_ > 0.0)
+    {
+      const double k = fire_latched_ ? fire_trans_hold_scale_ : 1.0;
+      const double d_aim = tools::limit_rad(fire_cmd_yaw_ - std::atan2(target_armor_xyza(1), target_armor_xyza(0)));
+      const double d_gim = tools::limit_rad(fire_cmd_yaw_ - gimbal_yaw);
+      suggest_fire = std::abs(d_aim) <= fire_trans_aim_tol_ * k && suggest_pitch;
+      cmd_gimbal_far = std::abs(d_gim) > fire_cmd_gimbal_tol_ * k;
+      debug_fire_gate_ = suggest_fire ? 0 : 1;
+      debug_fire_win_deg_ = fire_trans_aim_tol_ * k * 57.3;   // 诊断: 这条路径下窗口 = tol
+      debug_fire_delta_deg_ = d_aim * 57.3;                   // 诊断: 指令离板预测
+      debug_fire_dgim_deg_ = d_gim * 57.3;                    // 诊断: 指令离云台
+      debug_fire_trans_ = true;
+    }
+    if (cmd_gimbal_far) debug_fire_gate_ |= 2;              // 2 云台离指令 > tol
+    if (fire_now_t < fire_block_until_t_) debug_fire_gate_ |= 4;  // 4 换板等待
+    if (braking) debug_fire_gate_ |= 8;                     // 8 急刹
+    if (low_speed && fire_spent_) debug_fire_gate_ |= 16;   // 16 本块板已用完
+    if (cmd_gimbal_far) suggest_fire = false;
 
     if (!outpost_is_make) suggest_fire = 0;
 
@@ -458,6 +655,7 @@ namespace auto_aim
     // 高速反陀螺时云台基本不动、板自己扫过窗口, 扫过时间本来就只有十几 ms, 不做确认。
     if (fire_now_t < fire_block_until_t_)
       suggest_fire = false;
+    if (braking) suggest_fire = false;
     // ★2026-10-03 低速"一次开火"状态机:
     //   进窗 -> 连续在窗内 fire_confirm_time_ -> 开火 fire_max_duration_ -> 结束,
     //   结束后标记 fire_spent_, 同一块板即使还在窗口内也不再开火, 直到换板/丢目标。
@@ -598,6 +796,153 @@ namespace auto_aim
     else if (!is_high_spin(target))
       target.predict(laser_aim_lead_);
 
+    // ★2026-10-07 平移时用"直接拟合最近观测"修正预测(yaml obs_fit_enable, 缺省关)。
+    //   【原因】EKF 是匀速模型, 起步/加速时车速估计慢半拍, 预测落后。离线评估(9 份平移日志, 预测 0.1s 后):
+    //     起步加速 EKF 偏差 -0.76 度 / 误差 0.85 度(40% 超过 1 度); 二阶拟合 -0.03 / 0.23(1.4%)
+    //     匀速     EKF -0.37 / 0.48; 二阶拟合 +0.03 / 0.20      减速 EKF +0.13 / 0.80; 二阶拟合 +0.18 / 0.33
+    //   【做法】target.obs_hist = 同一块板最近的原始观测位置(换板清空)。对 x、y 各做 obs_fit_order 阶最小二乘
+    //   (窗口 obs_fit_window 秒), 外推到"本次瞄准对应的时刻"(target 的预测时刻 + 已预测的飞行时间/激光提前量),
+    //   得到板的位置和速度, 和 EKF 预测的同一块板比, 差值整体加到车中心位置和速度上。
+    //   只在平移(没在转、车速 >= trans_fire_speed)用; 修正量限 obs_fit_max_shift 米, 观测不够就不修。
+    //   小陀螺/静止完全不走这里。
+    debug_obs_fit_used_ = false;
+    fire_raw_speed_valid_ = false;
+    if (obs_fit_enable_)
+    {
+      const auto xf = target.ekf_x();
+      fire_raw_speed_ = std::hypot(xf[1], xf[3]);
+      fire_raw_speed_valid_ = true;
+      const bool spinning = is_high_spin(target) || std::abs(xf[7]) >= low_speed_yaw_spin_vyaw_;
+      const auto & oh = target.obs_hist;
+      const auto al = target.armor_xyza_list();
+      const int id = (target.last_id >= 0 && target.last_id < static_cast<int>(al.size())) ? target.last_id : -1;
+      // 第二版: 本周期算出的"原始修正量"(不适用时为 0)先低通, 再加到 target 上, 不让瞄准点每帧乱跳。
+      //   第一版回放: 修正量每周期跳, 指令每周期变化 0.09 -> 0.13 度, 云台跟不上, 匀速开火 70% -> 30%。
+      Eigen::Vector2d raw_shift = Eigen::Vector2d::Zero(), raw_dv = Eigen::Vector2d::Zero();
+      bool raw_ok = false;
+      if (!spinning && id >= 0 && std::hypot(xf[1], xf[3]) >= trans_fire_speed_ && oh.size() >= 6)
+      {
+        const auto t_last = oh.back().t;
+        size_t lo = oh.size() - 1;
+        while (lo > 0 && tools::delta_time(t_last, oh[lo - 1].t) <= obs_fit_window_) lo--;
+        const int n = static_cast<int>(oh.size() - lo);
+        const double span = tools::delta_time(t_last, oh[lo].t);
+        const int order = obs_fit_order_;
+        if (n >= order + 4 && span >= 0.6 * obs_fit_window_)
+        {
+          Eigen::MatrixXd A(n, order + 1);
+          Eigen::MatrixXd b(n, 2);
+          for (int i = 0; i < n; i++)
+          {
+            const double dt = tools::delta_time(oh[lo + i].t, t_last);
+            for (int p = 0; p <= order; p++) A(i, p) = std::pow(dt, p);
+            b(i, 0) = oh[lo + i].x;
+            b(i, 1) = oh[lo + i].y;
+          }
+          const Eigen::MatrixXd c = A.colPivHouseholderQr().solve(b);
+          const double T_lead = (!laser_mode_ || laser_pitch_mode_ == 1) ? bullet_traj.fly_time : laser_aim_lead_;
+          const double d = tools::delta_time(target.last_obs_t(), t_last) + T_lead;  // 从最后一帧观测到瞄准时刻
+          Eigen::Vector2d pos = Eigen::Vector2d::Zero(), vel = Eigen::Vector2d::Zero();
+          for (int p = 0; p <= order; p++)
+          {
+            pos += c.row(p).transpose() * std::pow(d, p);
+            if (p >= 1) vel += c.row(p).transpose() * (p * std::pow(d, p - 1));
+          }
+          Eigen::Vector2d shift = pos - Eigen::Vector2d(al[id](0), al[id](1));
+          if (obs_fit_vel_only_)
+          {
+            // 第三版(只修速度): 位置还用 EKF 的, 只把"拟合出的速度/加速度"换进来:
+            //   shift = (v_fit(现在) - v_ekf) * T + 0.5 * a_fit * T^2
+            //   第二版诊断: 直接用拟合位置时, 原始修正量每周期跳 22mm(二阶外推放大了观测噪声), 云台跟不上;
+            //   位置截距是噪声大头, 速度/加速度要平稳得多。
+            const double d_now = tools::delta_time(target.last_obs_t(), t_last);
+            Eigen::Vector2d v_now = Eigen::Vector2d::Zero(), acc = Eigen::Vector2d::Zero();
+            for (int p = 1; p <= order; p++) v_now += c.row(p).transpose() * (p * std::pow(d_now, p - 1));
+            if (order >= 2) acc = 2.0 * c.row(2).transpose();
+            shift = (v_now - Eigen::Vector2d(xf[1], xf[3])) * T_lead + 0.5 * acc * T_lead * T_lead;
+          }
+          if (shift.norm() <= obs_fit_max_shift_)
+          {
+            Eigen::Vector2d dv = vel - Eigen::Vector2d(xf[1], xf[3]);
+            if (dv.norm() > obs_fit_max_dv_) dv *= obs_fit_max_dv_ / dv.norm();
+            raw_shift = shift * obs_fit_blend_;
+            raw_dv = dv * obs_fit_blend_;
+            raw_ok = true;
+          }
+        }
+      }
+      // 低通: 丢目标/换板(obs_hist 被清空)时直接清零; 不适用时朝 0 衰减, 进出平移不会一下跳
+      const auto now_f = now();
+      const double dtf = tools::delta_time(now_f, obs_fit_last_t_);
+      obs_fit_last_t_ = now_f;
+      if (spinning || dtf > 0.2 || oh.size() < 2 || id != obs_fit_last_id_)
+      {
+        // 在转 / 丢目标 / 换板: 立刻清零, 小陀螺完全不受影响
+        obs_fit_shift_f_.setZero();
+        obs_fit_dv_f_.setZero();
+      }
+      else
+      {
+        // 自适应平滑: 修正量变化小(抖动) -> 用 obs_fit_smooth_tau 平滑; 变化大(真在加减速) -> 立刻跟上。
+        //   回放: 固定平滑时匀速开火回来了, 但减速变准差(误差 1.19 -> 1.7 度); 所以大变化不平滑。
+        double a = obs_fit_smooth_tau_ > 0.0 ? dtf / (obs_fit_smooth_tau_ + dtf) : 1.0;
+        if (obs_fit_fast_thr_ > 0.0 && (raw_shift - obs_fit_shift_f_).norm() > obs_fit_fast_thr_) a = 1.0;
+        obs_fit_shift_f_ += a * (raw_shift - obs_fit_shift_f_);
+        obs_fit_dv_f_ += a * (raw_dv - obs_fit_dv_f_);
+      }
+      obs_fit_last_id_ = id;
+      debug_obs_fit_raw_ok_ = raw_ok;
+      debug_obs_fit_raw_ = raw_shift;
+      debug_obs_fit_applied_ = obs_fit_shift_f_;
+      if (obs_fit_shift_f_.norm() > 1e-6 || obs_fit_dv_f_.norm() > 1e-6)
+      {
+        target.shift_center(obs_fit_shift_f_.x(), obs_fit_shift_f_.y(), obs_fit_dv_f_.x(), obs_fit_dv_f_.y());
+        debug_obs_fit_used_ = true;
+      }
+    }
+
+    // ★2026-10-07 平移加速度补偿(yaml trans_accel_gain, 0 = 关)。
+    //   【原因】EKF 是匀速模型, 车一加速就要过一阵子才承认"车变快了", 预测提前量不够(实车 18-36-55:
+    //   加速时提前 0.7 度, 匀速 2.0 度)。强队开源(同济/交大/深大)都是匀速模型, 都没专门处理;
+    //   这里按调研建议, 不改 EKF, 只在预测之后把"车在加速"这部分补上。
+    //   【做法】用 EKF 车中心速度 trans_accel_window 秒的差分估加速度, 乘 gain(EKF 速度本身滞后, 差分偏小),
+    //   限幅 trans_accel_max, 然后车中心位置 += 0.5*a*T^2、速度 += a*T。
+    //   T = 已预测的时间(弹丸飞行时间或激光提前量) + trans_accel_extra_time(补云台跟随)。
+    //   只在平移(不在转: |vyaw| < low_speed_yaw_spin_vyaw 且不是高速打法)时用, 小陀螺完全不受影响。
+    //   减速时 a 和速度反向, 提前量自动变小, 不会瞄过头。
+    if (trans_accel_gain_ > 0.0)
+    {
+      const auto now_a = now();
+      const auto xa = target.ekf_x();
+      if (tools::delta_time(now_a, trans_accel_last_t_) > 0.2) trans_accel_hist_.clear();
+      trans_accel_last_t_ = now_a;
+      trans_accel_hist_.push_back({now_a, Eigen::Vector2d(xa[1], xa[3])});
+      while (trans_accel_hist_.size() > 1 &&
+             tools::delta_time(now_a, trans_accel_hist_.front().first) > trans_accel_window_)
+        trans_accel_hist_.pop_front();
+      const bool spinning = is_high_spin(target) || std::abs(xa[7]) >= low_speed_yaw_spin_vyaw_;
+      const double dta = tools::delta_time(now_a, trans_accel_hist_.front().first);
+      const Eigen::Vector2d vel(xa[1], xa[3]);
+      // 第二版: 只补"沿着运动方向在变快"的那部分, 且加速度超过死区才补。
+      //   第一版回放: 静止/匀速时 EKF 车速的噪声被差分放大, 瞄准点乱跳, 静止开火掉了 1~10%;
+      //   减速时也补(提前量变小), 减速段开火掉一半。减速本来有急刹规则管, 这里不碰。
+      if (!spinning && dta > 0.5 * trans_accel_window_ && vel.norm() >= trans_fire_speed_)
+      {
+        const Eigen::Vector2d dir = vel.normalized();
+        const double a_raw = (vel - trans_accel_hist_.front().second).dot(dir) / dta;  // 沿运动方向, >0 = 在变快
+        double a_par = (a_raw > trans_accel_deadzone_) ? (a_raw - trans_accel_deadzone_) * trans_accel_gain_ : 0.0;
+        a_par = std::min(a_par, trans_accel_max_);
+        Eigen::Vector2d a = a_par * dir;
+        const double T = ((!laser_mode_ || laser_pitch_mode_ == 1) ? bullet_traj.fly_time : laser_aim_lead_) + trans_accel_extra_time_;
+        target.apply_center_accel(a.x(), a.y(), T);
+        debug_trans_accel_ = a;
+      }
+      else
+      {
+        debug_trans_accel_.setZero();
+      }
+    }
+
     // tools::logger()->info("h:{}, xy_d:{}, xyz_d:{}, fly_time:{}, ", target_h, min_dist, xyz.norm(), bullet_traj.fly_time);
 
     // 2. Get trajectory
@@ -691,6 +1036,27 @@ namespace auto_aim
       plan.yaw = yaw_pitch(0);
       plan.yaw_vel = 0;
       plan.yaw_acc = 0;
+      // ★2026-10-08 高速反陀螺 + 平移: yaw 速度前馈 = 车中心方位角速度(yaml high_spin_center_vel_ff, 缺省关)。
+      //   【现象】实车 17-54-52 边转边平移, 往左平移开火 22~42%, 往右平移 1~8%, 两边转速估计一样(~2.9), 都在高速档。
+      //   【原因】这里前馈固定 0, 电控只能靠位置误差追平移, 云台落后指令 ~80ms(车速 1.2+ 时 ~2 度);
+      //   靶车的板在视野里从右往左扫, 锁定的板过正中再往左 leaving_angle(20 度)就换下一块:
+      //   往左平移云台落在右边, 板扫过来正好经过云台; 往右平移云台落在左边, 板走不到就换板了,
+      //   回放: 往右时换板前一刻板离云台还差 1.5 度。转向反过来时, 打不出的就是往左。
+      //   【做法】把车中心的方位角速度告诉电控。它只和整车平移有关, 和 MPC/换板无关,
+      //   实车逐帧跳变最大 2.6 deg/s, 不会像 MPC 前馈那样换板时冲 100+ deg/s。
+      //   车速 < high_spin_center_ff_min_speed 时不发: 原地高速小陀螺(车速 ~0.15)完全原行为。
+      if (high_spin_center_vel_ff_)
+      {
+        const auto xh = target.ekf_x();
+        const double r2h = xh(0) * xh(0) + xh(2) * xh(2);
+        if (r2h > 0.04 && std::hypot(xh(1), xh(3)) >= high_spin_center_ff_min_speed_)
+        {
+          double w = (xh(0) * xh(3) - xh(2) * xh(1)) / r2h;  // rad/s, 车中心方位角速度
+          if (low_speed_yaw_vel_limit_ > 0.0 && std::abs(w) > low_speed_yaw_vel_limit_)
+            w = std::copysign(low_speed_yaw_vel_limit_, w);
+          plan.yaw_vel = w;
+        }
+      }
       plan.pitch = yaw_pitch(1);
       plan.pitch_vel = 0;
       plan.pitch_acc = 0;
@@ -715,13 +1081,143 @@ namespace auto_aim
       {
         last_yaw_command_ = plan.yaw;
         yaw_command_initialized_ = true;
+        yaw_switch_state_init_ = false;
       }
-      const double yaw_delta = tools::limit_rad(plan.yaw - last_yaw_command_);
-      if (std::abs(yaw_delta) > low_speed_yaw_step_limit_)
+      // ★2026-10-07 第二版: 开关打开时, 目标在转(|vyaw| >= low_speed_yaw_spin_vyaw)就完全走 A 版。
+      //   【原因】第一版慢速小陀螺也放开了, 实车 17-01-40: 每次换板 MPC 速度前馈冲到 100~176 deg/s,
+      //   云台来回抖, 慢速段开火 0%。A 版每周期限幅时顺带把前馈清零, 所以不抖。
+      //   换板频率区分不了(平移时 EKF 也频繁换板, 31~58% 周期), 只能用转速, 平移时约 14% 周期被误判成在转,
+      //   误判时退回 A 版(稍慢, 但不抖)。转速掉到阈值以下要持续 low_speed_yaw_spin_hold 秒才放开, 防止来回切。
+      bool spin_mode = !low_speed_yaw_limit_switch_only_;
+      if (low_speed_yaw_limit_switch_only_)
       {
-        plan.yaw = tools::limit_rad(last_yaw_command_ + std::copysign(low_speed_yaw_step_limit_, yaw_delta));
-        plan.yaw_vel = 0.0;
-        plan.yaw_acc = 0.0;
+        const double vyaw_abs = std::abs(target.ekf_x()(7));
+        if (vyaw_abs >= low_speed_yaw_spin_vyaw_) last_spin_seen_t_ = now_t;
+        spin_mode = tools::delta_time(now_t, last_spin_seen_t_) < low_speed_yaw_spin_hold_;
+        if (spin_mode) yaw_switch_state_init_ = false;  // 下次放开时从当前指令开始慢慢追, 不跳
+      }
+      // ★2026-10-07 限幅加上"车中心方位角本周期的变化"(yaml low_speed_yaw_step_follow_center, 缺省关 = A 版)。
+      //   【原因】实车 14-59-23: 快速平移(1~1.6m/s)时 EKF 转速被带偏到 0.3~0.9, 进了上面的 A 版限幅,
+      //   指令被钉在 0.05 度/周期 = 8.9 deg/s, 板却在以 40~60 deg/s 移动, 1 秒内落后十几度, 板出画面丢目标。
+      //   28 次丢目标里 10 次是板从画面边上出去的, 出去前指令都卡在 8.9 deg/s。
+      //   【做法】每周期允许的变化 = step_limit + |车中心方位角本周期的变化|:
+      //   平移带来的方位变化直接放行, 换板跳变(车中心不动、板跳)照样只走 step_limit。
+      //   原地小陀螺车中心基本不动, 和 A 版几乎一样。
+      // 第二版: 不用车中心位置的逐周期差分(位置估计每周期在跳, 慢速小陀螺时把限幅放开了, 前馈峰值 52 -> 106 deg/s),
+      //   改用 EKF 车中心速度的横向分量算方位角速度 x 周期时长, 而且只在车速 >= low_speed_yaw_follow_min_speed 时生效。
+      //   原地/慢速小陀螺车速 < 0.5m/s, 完全是 A 版。
+      const auto xc = target.ekf_x();
+      double center_step = 0.0;
+      const double c_r2 = xc(0) * xc(0) + xc(2) * xc(2);
+      const double c_speed = std::hypot(xc(1), xc(3));
+      //   注: 这里故意不加 !spin_mode。center_step 只放宽位置限幅, 不发速度前馈, 不会引起抖;
+      //   而平移时约 14% 的周期 EKF 转速被带偏到 0.6 以上误判成 spin_mode,
+      //   加上之后回放 13-50-38 平移开火 70.4% -> 50.6%, 14-59-23 84.4% -> 72.8%。
+      if (low_speed_yaw_step_follow_center_ && c_r2 > 0.04 && c_speed >= low_speed_yaw_follow_min_speed_)
+      {
+        const double az_rate = (xc(0) * xc(3) - xc(2) * xc(1)) / c_r2;  // rad/s, 车中心方位角变化率
+        const double dt_cyc = std::clamp(tools::delta_time(now_t, last_yaw_command_t_), 0.0, 0.02);
+        // 只放宽"跟车中心同方向"的那一边: 反方向的抖动/换板回跳照样只走 step_limit。
+        //   回放 14-37-44(边平移边慢转): 两边都放宽时指令来回锯齿, 前馈冲到 106 deg/s。
+        const double want = tools::limit_rad(plan.yaw - last_yaw_command_);
+        if (want * az_rate > 0.0) center_step = std::abs(az_rate) * dt_cyc * low_speed_yaw_follow_gain_;
+      }
+      // ★2026-10-08 限幅生效时, 前馈改成"指令自己的角速度"而不是 0(yaml low_speed_yaw_vel_follow_cmd, 缺省关)。
+      //   【原因】电控 SMC 里 d_error = 实际角速度 - 目标角速度, 前馈给 0 等于告诉电控"目标是静止的",
+      //   电控只能靠位置误差积累驱动, 必然稳态落后。实车 15-51-18: 视觉发的 yaw 前馈 63.8% 的周期是 0,
+      //   平均只有 2.5 deg/s, 而平移时板实际在以 20~30 deg/s 移动。
+      //   【做法】被限幅那一周期, 指令实际走了 step 度, 用时 dt, 所以指令自己的角速度就是 step/dt。
+      //   发这个值既和指令一致(不会像 MPC 原始前馈那样位置被限住还猛推), 又不会让电控以为目标静止。
+      //   只在"车真的在平移"(车速 >= low_speed_yaw_follow_min_speed)时生效: 原地/慢速小陀螺车速 < 0.5m/s,
+      //   前馈照旧清零, 和 A 版一样不抖。
+      //   ★2026-10-08 同上, 必须同时 !spin_mode。原来只看车速, 边转边平移时前馈照发:
+      //   实车 17-00-08 慢速段车速 >= 0.5 的周期占 59%, 这些周期 100% 发了前馈(平均 25 deg/s),
+      //   改之前(16-19-05)只有 0.6; 云台逐周期动 0.34 -> 2.12 度, 顺向开火 0.4%。
+      //   10-06 已验证: 慢速小陀螺收到速度前馈就来回抖, 所以 A 版限幅时要顺带清零。
+      const bool vel_ff_ok = low_speed_yaw_vel_follow_cmd_ && !spin_mode &&
+                             c_speed >= low_speed_yaw_follow_min_speed_;
+      const double vel_dt = std::clamp(tools::delta_time(now_t, last_yaw_command_t_), 0.003, 0.02);
+      auto cmd_vel_ff = [&](double step_rad, double sign) {
+        double w = step_rad / vel_dt;
+        if (low_speed_yaw_vel_limit_ > 0.0 && w > low_speed_yaw_vel_limit_) w = low_speed_yaw_vel_limit_;
+        return std::copysign(w, sign);
+      };
+      if (spin_mode)
+      {
+        // A 版原行为: 每周期都限幅
+        const double yaw_delta = tools::limit_rad(plan.yaw - last_yaw_command_);
+        if (std::abs(yaw_delta) > low_speed_yaw_step_limit_ + center_step)
+        {
+          const double step = low_speed_yaw_step_limit_ + center_step;
+          plan.yaw = tools::limit_rad(last_yaw_command_ + std::copysign(step, yaw_delta));
+          plan.yaw_vel = vel_ff_ok ? cmd_vel_ff(step, yaw_delta) : 0.0;
+          plan.yaw_acc = 0.0;
+        }
+        // 放宽生效的周期没被限住时, MPC 前馈会直接放出去; 和放开路径一样限到 low_speed_yaw_vel_limit。
+        //   回放 14-37-44: 不限时慢速段前馈峰值 52 -> 91 deg/s。
+        if (center_step > 0.0 && low_speed_yaw_vel_limit_ > 0.0 && std::abs(plan.yaw_vel) > low_speed_yaw_vel_limit_)
+          plan.yaw_vel = std::copysign(low_speed_yaw_vel_limit_, plan.yaw_vel);
+      }
+      else
+      {
+        // ★2026-10-07 只在换板时限幅(yaml low_speed_yaw_limit_switch_only, 缺省关)。
+        //   【原因】A 版每周期都限 0.05 度, 纯平移时 78~91% 的周期被限住, 指令落后 10~17 度, 打不中。
+        //   按"单周期变化 > 0.5 度才限"也不行: 急刹/急起时 EKF 速度修正会让瞄准角单周期跳 1~9 度,
+        //   和换板跳变一样大, 会被误限(回放: 急刹段 13~28% 周期落后 > 1 度)。
+        //   【做法】不看幅度大小, 看"是不是真的换了板"。本周期或上一周期出现下面任一信号算换板:
+        //     1. EKF 匹配的板 last_id 变了
+        //     2. rbaim 瞄的板变了(瞄准板朝向单周期变 > 30 度, 和 rbShoot 的 armor_switched 同一判据)
+        //     3. EKF 重建(update_count_ 变小)
+        //   换板且跳变 > low_speed_yaw_switch_jump_deg: 从旧指令开始按 low_speed_yaw_step_limit 追, 并清前馈。
+        //   追赶期间每周期最多走"原始瞄准角本周期的变化 + step_limit", 既跟住平移又慢慢追平, 差值不累加。
+        //   没换板: 指令 = 原始瞄准角, 不限幅, 前馈不动。
+        const double raw_yaw = plan.yaw;
+        const double aim_armor_yaw = debug_xyza(3);  // 上面 rbaim(target_now) 刚写入, 本周期瞄准的板朝向
+        if (!yaw_switch_state_init_)
+        {
+          last_raw_yaw_ = raw_yaw;
+          last_aim_armor_yaw_ = aim_armor_yaw;
+          last_target_id_ = target.last_id;
+          last_update_count_ = target.update_count_;
+          last_switch_signal_ = false;
+          // 刚从 A 版(在转)切过来时, 指令可能还落后原始瞄准角, 从当前指令慢慢追, 不一步跳过去
+          yaw_catching_up_ = std::abs(tools::limit_rad(raw_yaw - last_yaw_command_)) > low_speed_yaw_step_limit_;
+          yaw_switch_state_init_ = true;
+        }
+        const bool sig_id = target.last_id != last_target_id_;
+        const bool sig_aim = std::abs(tools::limit_rad(aim_armor_yaw - last_aim_armor_yaw_)) > 30. / 57.3;
+        const bool sig_rebuild = target.update_count_ < last_update_count_;
+        const bool sig_now = sig_id || sig_aim || sig_rebuild;
+        const double raw_delta = tools::limit_rad(raw_yaw - last_raw_yaw_);
+        const bool switch_jump = (sig_now || last_switch_signal_) && std::abs(raw_delta) > low_speed_yaw_switch_jump_;
+        if (switch_jump) yaw_catching_up_ = true;
+
+        if (yaw_catching_up_)
+        {
+          // 换板跳变那一周期只走 step_limit; 之后跟上原始瞄准角的变化再多追 step_limit
+          const double step = switch_jump ? low_speed_yaw_step_limit_ : std::abs(raw_delta) + low_speed_yaw_step_limit_;
+          const double err = tools::limit_rad(raw_yaw - last_yaw_command_);
+          if (std::abs(err) > step)
+          {
+            plan.yaw = tools::limit_rad(last_yaw_command_ + std::copysign(step, err));
+            plan.yaw_vel = vel_ff_ok ? cmd_vel_ff(step, err) : 0.0;
+            plan.yaw_acc = 0.0;
+          }
+          else
+          {
+            yaw_catching_up_ = false;  // 已追平, 本周期直接用原始瞄准角
+          }
+        }
+        // 保险: yaw 速度前馈限幅。平移时实车前馈 25~55 deg/s, 换板尖峰 100~176 deg/s。
+        //   万一转速判断漏掉, 也不会被一下猛推。只作用在放开的这条路径, A 版路径不变。
+        if (low_speed_yaw_vel_limit_ > 0.0 && std::abs(plan.yaw_vel) > low_speed_yaw_vel_limit_)
+          plan.yaw_vel = std::copysign(low_speed_yaw_vel_limit_, plan.yaw_vel);
+
+        last_raw_yaw_ = raw_yaw;
+        last_aim_armor_yaw_ = aim_armor_yaw;
+        last_target_id_ = target.last_id;
+        last_update_count_ = target.update_count_;
+        last_switch_signal_ = sig_now;
       }
       last_yaw_command_ = plan.yaw;
       last_yaw_command_t_ = now_t;
@@ -729,6 +1225,7 @@ namespace auto_aim
     else
     {
       yaw_command_initialized_ = false;
+      yaw_switch_state_init_ = false;
     }
 
     // 前哨站迭代限制
@@ -797,7 +1294,10 @@ namespace auto_aim
       shoot_latency_now = std::max(0.0, shoot_latency_near_ + k * (shoot_latency_far_ - shoot_latency_near_));
     }
     target.predict((laser_mode_ ? laser_latency_ : -gimbal_control_delay) + shoot_latency_now);
+    fire_cmd_yaw_ = tools::limit_rad(plan.yaw - yaw_offset_);  // 本周期发给电控的 yaw, 和 gimbal_yaw 同一坐标
+    fire_cmd_yaw_valid_ = true;
     plan.fire = rbShoot(target, (gimbal_yaw) / 57.3 - yaw_offset_);
+    fire_cmd_yaw_valid_ = false;
     if (spin_high_settle_time_ > 0.0 && spin_high_now &&
         tools::delta_time(spin_now_t, spin_high_since_) < spin_high_settle_time_)
       plan.fire = false;

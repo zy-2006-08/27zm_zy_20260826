@@ -2,6 +2,7 @@
 #define AUTO_AIM__PLANNER_HPP
 
 #include <Eigen/Dense>
+#include <deque>
 #include <list>
 #include <optional>
 
@@ -168,6 +169,87 @@ namespace auto_aim
     bool yaw_command_initialized_ = false;
     double last_yaw_command_ = 0.0;
     std::chrono::steady_clock::time_point last_yaw_command_t_{};
+    // ★2026-10-07 只在换板时限幅(yaml low_speed_yaw_limit_switch_only, 缺省关 = A 版行为)
+    bool low_speed_yaw_limit_switch_only_ = false;
+    double low_speed_yaw_switch_jump_ = 0.5 / 57.3;  // 换板信号下单周期跳变超过它才限
+    double low_speed_yaw_spin_vyaw_ = 0.6;           // rad/s, |vyaw| 超过它算在转, 走 A 版
+    bool low_speed_yaw_step_follow_center_ = false;  // 限幅加上车中心方位角变化(平移时不被钉住)
+    bool low_speed_yaw_vel_follow_cmd_ = false;      // 限幅时前馈 = 指令自己的角速度(而不是 0)
+    double low_speed_yaw_follow_min_speed_ = 0.5;    // m/s, 车速低于它不放宽(小陀螺完全 A 版)
+    double low_speed_yaw_follow_gain_ = 1.5;         // 放宽量 = 车中心方位角速度 x 周期 x gain(留余量给提前量变化)
+    double low_speed_yaw_spin_hold_ = 0.3;           // s, 转速掉下去后保持 A 版这么久再放开
+    double low_speed_yaw_vel_limit_ = 60.0 / 57.3;   // 放开路径的 yaw 速度前馈上限, 0 = 不限
+    bool high_spin_center_vel_ff_ = false;           // 高速反陀螺+平移: yaw 速度前馈 = 车中心方位角速度(原来 0)
+    double high_spin_center_ff_min_speed_ = 0.3;     // m/s, 车速低于它不发(原地高速小陀螺完全原行为)
+    double high_spin_left_shift_ = 0.0;              // m, 高速+往左平移时开火窗口往右挪多少(正 = 落点右移), 0 = 关
+    double high_spin_left_shift_min_speed_ = 0.5;    // m/s, 往左的横向车速低于它不挪(原地小陀螺不变)
+    std::chrono::steady_clock::time_point last_spin_seen_t_{};
+    // ★2026-10-07 平移开火窗口 / 急刹不开火 (yaml, 0 = 关)
+    double trans_armor_tolerance_ = 0.0;  // m, 平移时开火窗口宽度(板面左右), 0 = 沿用 small_armor_tolerance
+    double trans_fire_speed_ = 0.3;       // m/s, 车速超过它算平移
+    double fire_brake_decel_ = 0.0;       // m/s^2, 50ms 内减速超过它算急刹, 0 = 关
+    double fire_brake_hold_ = 0.15;       // s, 急刹后多久不开火
+    std::chrono::steady_clock::time_point fire_brake_until_t_{};
+    std::deque<std::pair<std::chrono::steady_clock::time_point, double>> fire_speed_hist_;
+    // ★2026-10-07 减速不开火 / 平移开火判断用云台提前角 (yaml, 0 = 关)
+    double fire_decel_ratio_ = 0.0;    // 车速在窗口内掉了这个比例就不开火, 0 = 关
+    double fire_decel_window_ = 0.1;   // s
+    std::deque<std::pair<std::chrono::steady_clock::time_point, double>> fire_decel_hist_;
+    double fire_gimbal_lead_ = 0.0;    // s, 平移时开火判断用云台这么久之后的角度, 0 = 关
+    double fire_cmd_gimbal_tol_ = 0.0; // rad, 平移时按指令判窗口 + 云台离指令小于它才开火, 0 = 关
+    double fire_cmd_yaw_ = 0.0;        // rbplan 本周期的 yaw 指令(已减 yaw_offset), 给 rbShoot 用
+    double fire_trans_aim_tol_ = 0.0;  // rad, 平移时 |指令-板预测| 门限, 0 = 关(用原窗口)
+    double fire_trans_hold_scale_ = 1.25;  // 开火中门限放宽倍数
+    bool fire_cmd_yaw_valid_ = false;
+    // ★2026-10-07 平移加速度补偿 (yaml trans_accel_gain, 0 = 关)
+    double trans_accel_gain_ = 0.0;
+    double trans_accel_window_ = 0.1;      // s, 速度差分窗口
+    double trans_accel_max_ = 4.0;         // m/s^2, 加速度上限
+    double trans_accel_extra_time_ = 0.0;  // s, 在弹丸飞行时间之外多补的时间(云台跟随)
+    double trans_accel_deadzone_ = 1.0;    // m/s^2, 沿运动方向的加速度超过它才补(滤掉车速估计噪声)
+    std::deque<std::pair<std::chrono::steady_clock::time_point, Eigen::Vector2d>> trans_accel_hist_;
+    std::chrono::steady_clock::time_point trans_accel_last_t_{};
+
+    // ★2026-10-07 平移时直接拟合最近观测修正预测 (yaml obs_fit_enable, 缺省关)
+    bool obs_fit_enable_ = false;
+    double obs_fit_window_ = 0.2;     // s
+    int obs_fit_order_ = 2;           // 1 = 匀速, 2 = 匀加速
+    double obs_fit_max_shift_ = 0.3;  // m, 修正量超过它就不修(拟合坏了)
+    double obs_fit_max_dv_ = 1.5;     // m/s, 速度修正上限
+    double obs_fit_smooth_tau_ = 0.0; // s, 修正量低通时间常数, 0 = 不平滑
+    double obs_fit_blend_ = 1.0;      // 修正量用多少(0~1)
+    double obs_fit_fast_thr_ = 0.0;   // m, 修正量变化超过它就不平滑直接跟, 0 = 一直平滑
+    bool obs_fit_vel_only_ = false;   // true: 位置用 EKF, 只换拟合的速度/加速度(噪声小)
+    Eigen::Vector2d obs_fit_shift_f_ = Eigen::Vector2d::Zero();
+    Eigen::Vector2d obs_fit_dv_f_ = Eigen::Vector2d::Zero();
+    std::chrono::steady_clock::time_point obs_fit_last_t_{};
+    int obs_fit_last_id_ = -1;
+
+    public:
+    Eigen::Vector2d debug_trans_accel_ = Eigen::Vector2d::Zero();  // 本周期用的加速度(回放/日志用)
+    bool debug_obs_fit_used_ = false;
+    bool debug_obs_fit_raw_ok_ = false;
+    int debug_fire_gate_ = 0;           // rbShoot 每道门: 1 不在窗口 2 云台离指令远 4 换板等待 8 急刹 16 已用完
+    double debug_fire_win_deg_ = 0.0;   // 开火窗口半宽(度)
+    double debug_fire_delta_deg_ = 0.0; // 判开火用的角度差(度)
+    double debug_fire_dgim_deg_ = 0.0;  // 指令离云台(度)
+    bool debug_fire_trans_ = false;     // 本周期走的是平移开火判断
+    Eigen::Vector2d debug_obs_fit_raw_ = Eigen::Vector2d::Zero();
+    Eigen::Vector2d debug_obs_fit_applied_ = Eigen::Vector2d::Zero();
+    double fire_raw_speed_ = 0.0;       // 观测拟合修正前 EKF 车速, 给急刹判断用
+    bool fire_raw_speed_valid_ = false;
+
+    private:
+    bool fire_gimbal_init_ = false;
+    double fire_last_gimbal_yaw_ = 0.0;
+    std::chrono::steady_clock::time_point fire_last_gimbal_t_{};
+    bool yaw_switch_state_init_ = false;
+    bool yaw_catching_up_ = false;     // 换板后正在按 step_limit 追原始瞄准角
+    bool last_switch_signal_ = false;  // 上一周期有换板信号(允许错开 1 周期)
+    double last_raw_yaw_ = 0.0;        // 上一周期限幅前的原始瞄准角
+    double last_aim_armor_yaw_ = 0.0;  // 上一周期 rbaim 瞄准板朝向
+    int last_target_id_ = -1;
+    int last_update_count_ = 0;
 
     TinySolver * yaw_solver_;
     TinySolver * pitch_solver_;

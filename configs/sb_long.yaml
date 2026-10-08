@@ -224,7 +224,7 @@ com_port: "/dev/ttyACM0"
 target_dist_error: 0.0
 target_h_error: 0.4
 fire_thresh: 0.003 # 
-small_armor_tolerance: 0.03
+small_armor_tolerance: 0.05
 big_armor_tolerance: 0.22
 # ★2026-09-28 开火迟滞, 解决低速时拨盘"哒 ... 哒哒哒"。
 # 原因: 小板窗口 0.03m 在 2.5m 处只有 ±0.34 度, 云台稳态误差 0.1~0.3 度就压在边上,
@@ -253,7 +253,61 @@ high_spin_armor_tolerance: 0.025 # m
 high_spin_armor_tolerance_slow: 0.08 # m
 high_spin_window_vyaw_slow: 3.0 # rad/s
 high_spin_window_vyaw_fast: 6.5 # rad/s
+# 2026-10-08 高速反陀螺+平移时 yaw 速度前馈 = 车中心方位角速度(原来 0, 云台落后平移 ~80ms, 往一侧平移打不出); false = 原行为
+high_spin_center_vel_ff: true # 2026-10-08 回放: 只改高速+平移的前馈(平均 0 -> 10.8 deg/s, 最大 44), 指令角/开火判断 0% 变化; 原地高速/平移/慢速 A 版不变
+high_spin_center_ff_min_speed: 0.3 # m/s, 车速低于它不发, 原地高速小陀螺不变
+# 2026-10-08 高速小陀螺+靶车往左平移: 弹丸落板左侧 1~2cm, 开火窗口往右挪(米, 正=落点右移), 0 = 关
+high_spin_left_shift: 0.015
+high_spin_left_shift_min_speed: 0.5 # m/s 往左横向车速, 低于它不挪(原地小陀螺不变)
 low_speed_yaw_step_limit_deg: 0.05 # degree/plan周期 低速yaw最大变化量
+# 2026-10-07 限幅加上车中心方位变化: 平移时(EKF 转速被带偏也)不被 0.05 度/周期钉住; false = A 版
+low_speed_yaw_step_follow_center: true # 回放 14-59-23: 板快出画面(指令落后>8度) 4.3% -> 1.7%, 瞄准误差 2.0 -> 0.8 度; 小陀螺基本不变
+low_speed_yaw_follow_min_speed: 0.5 # m/s, 车速低于它不放宽(小陀螺完全 A 版)
+low_speed_yaw_follow_gain: 1.5 # 放宽量 = 车中心方位角速度 x 周期 x gain
+# 2026-10-07 平移实验: true = 上面的限幅只在换板时生效(平移不再被按住); false = A 版每周期限幅
+# low_speed_yaw_limit_switch_only: false
+low_speed_yaw_limit_switch_only: true
+low_speed_yaw_switch_jump_deg: 0.5 # degree, 换板时单周期跳变超过它才限幅
+low_speed_yaw_spin_vyaw: 0.6 # rad/s, 开关打开时目标转速超过它就完全按 A 版(慢速小陀螺不抖)
+low_speed_yaw_spin_hold: 0.3 # s, 转速掉下去后再保持 A 版这么久才放开
+low_speed_yaw_vel_limit_deg: 60 # deg/s, 放开时 yaw 速度前馈上限(防换板猛推), 0 = 不限
+# 2026-10-08 限幅时 yaw 速度前馈 = 指令自己的角速度(不再清零)。电控 SMC 靠 d_error 工作, 给 0 等于说"目标静止", 必然稳态落后; false = 原行为
+low_speed_yaw_vel_follow_cmd: true # 回放: 平移时前馈=0 的周期 从 9.7~14.1% 降到 1.2~1.6%, 前馈平均 20->24 deg/s; 原地/慢速小陀螺不变
+# 2026-10-07 平移开火: 车速 >= trans_fire_speed 且没在转时, 开火窗口用 trans_armor_tolerance(小板宽 135mm); 0 = 关
+trans_armor_tolerance: 0.08 # m
+trans_fire_speed: 0.3 # m/s
+# 急刹不开火: 50ms 内减速超过 fire_brake_decel 后 fire_brake_hold 秒不开火; 0 = 关
+fire_brake_decel: 3.0 # m/s^2
+fire_brake_hold: 0.15 # s
+# 减速不开火: fire_decel_window 秒内车速掉了 fire_decel_ratio 以上, fire_brake_hold 秒不开火; 0 = 关
+# 2026-10-07 放宽: 慢慢减速照样开火, 只留上面的急刹规则。要恢复改回 0.3
+fire_decel_ratio: 0
+fire_decel_window: 0.1 # s
+# 平移时开火判断用云台 fire_gimbal_lead 秒后的角度(补电控跟随延迟); 0 = 关。下面 fire_cmd_gimbal_tol_deg 开着时不生效
+fire_gimbal_lead: 0.03 # s
+# 平移时按"指令"判开火窗口, 云台离指令小于它(度)就开火(起步加速时云台跟不上也能开火); 0 = 关
+fire_cmd_gimbal_tol_deg: 2.0 # 和 fire_trans_aim_tol_deg 一起扫的
+# 2026-10-07 平移开火第四版: 指令离板预测 <= 它(度) + 云台离指令 <= fire_cmd_gimbal_tol_deg 就开火; 0 = 关(用原窗口)
+fire_trans_aim_tol_deg: 4.0 # 回放(3 份实车日志, 实车云台角)扫出来的: 快速平移打中率(开火x命中) 12~42% -> 50~75%
+fire_trans_hold_scale: 1.25 # 开火中门限放宽倍数
+# 2026-10-07 平移加速度补偿: 车加速时瞄准点多往前推 0.5*a*T^2 (a 由 EKF 车速差分估计 x gain); 0 = 关
+trans_accel_gain: 0
+trans_accel_window: 0.1 # s
+trans_accel_max: 4.0 # m/s^2
+trans_accel_extra_time: 0.0 # s
+trans_accel_deadzone: 1.0 # m/s^2, 只补沿运动方向变快的部分, 超过它才补
+# 2026-10-07 平移时直接拟合最近观测修正预测(起步/加速跟得上); false = 关
+# obs_fit_enable: false
+obs_fit_enable: true
+# 回放(9 份平移日志)选的组合: 只修速度 + 2 阶 + 0.2s 窗口 + 不平滑 (起步/匀速/减速 都比关着准, 打偏比例 0.3~10%)
+obs_fit_window: 0.2 # s
+obs_fit_order: 2 # 1 匀速 / 2 匀加速
+obs_fit_max_shift: 0.3 # m
+obs_fit_max_dv: 1.5 # m/s
+obs_fit_smooth_tau: 0 # s, 修正量平滑(防瞄准点抖), 0 = 不平滑
+obs_fit_blend: 1.0 # 修正量用多少, 0~1
+obs_fit_fast_thr: 0.0 # m, 修正量变化超过它就不平滑(真在加减速), 0 = 一直平滑
+obs_fit_vel_only: true # true = 位置用 EKF, 只换拟合出的速度/加速度(瞄准点不抖)
 # fire_exit_scale: 1
 # fire_confirm_time: 0
 tower_and_base_armor_tolerance_: 0.10  # 26赛季前哨站和基地装甲板检测宽度2 

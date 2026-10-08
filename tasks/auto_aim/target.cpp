@@ -99,6 +99,22 @@ namespace auto_aim
     t_ = t;
   }
 
+  void Target::apply_center_accel(double ax, double ay, double T)
+  {
+    ekf_.x[0] += 0.5 * ax * T * T;
+    ekf_.x[2] += 0.5 * ay * T * T;
+    ekf_.x[1] += ax * T;
+    ekf_.x[3] += ay * T;
+  }
+
+  void Target::shift_center(double dx, double dy, double dvx, double dvy)
+  {
+    ekf_.x[0] += dx;
+    ekf_.x[2] += dy;
+    ekf_.x[1] += dvx;
+    ekf_.x[3] += dvy;
+  }
+
   void Target::predict(double dt)
   {
     double vyaw = std::abs(ekf_.x[7]);
@@ -196,6 +212,10 @@ namespace auto_aim
       // ★2026-10-03 (分支 fix/ekf-switch-vyaw) yaml ekf_vyaw_q 可覆盖转速过程噪声 v2, 缺省 400 = 原行为。
       //   v2 越大, 看不到板的空窗里 vyaw 不确定度涨得越快, 空窗后一帧就能把 vyaw 改很多。
       if (gap_vyaw_cfg.vyaw_q > 0) v2 = gap_vyaw_cfg.vyaw_q;
+      // ★2026-10-07 yaml ekf_trans_q 可覆盖平移过程噪声 v1(车中心加速度方差), 缺省 100 = 原行为。
+      //   EKF 是匀速模型, v1 越大越相信"车速会变", 起步/加速时车速估计跟得越快, 提前量不再偏小;
+      //   代价是匀速时车速估计更抖。实车 18-36-55: 加速时提前量只有匀速的 1/3(0.7 vs 2.0 度)。
+      if (gap_vyaw_cfg.trans_q > 0) v1 = gap_vyaw_cfg.trans_q;
     }
 
     // 构造过程噪声矩阵 Q
@@ -437,6 +457,11 @@ namespace auto_aim
         tower_armor_hs_datas_ptr[id] = 600;
       }
     }
+
+    // 观测历史(给 planner 平移拟合用): 换板就清空, 只留同一块板最近 0.5s
+    if (id != last_id) obs_hist.clear();
+    obs_hist.push_back({t_, armor.xyz_in_world[0], armor.xyz_in_world[1]});
+    while (!obs_hist.empty() && tools::delta_time(t_, obs_hist.front().t) > 0.5) obs_hist.erase(obs_hist.begin());
 
     last_id = id;
     update_count_++;

@@ -98,12 +98,11 @@ int main(int argc, char * argv[])
       auto gs = gimbal.state();            //读一份云台当前状态的快照（内部加锁拷贝，所以是安全的）。gs 里有：yaw/pitch（单位度，注意，gimbal.cpp 里已经乘过 57.3）、bullet_speed、bullet_count、mode、enemy_color。
 
       //MPC预测以及+自家火控
-      auto plan = planner.plan(target, gs.bullet_speed, gs.yaw, auto_aim::Planner::ShootStrategy::rbSuppressiveFire);  //核心一行。把目标、弹速、当前云台 yaw、开火策略交给规划器，得到一个 Plan 结构体。
-                                                                                                                       // 看 planner.hpp 里这个函数的实现，它内部依次做：
-                                                                                                                       // 如果 target 没值，直接返回 {false}（control = false，其余全 0）——即"不控制云台"
-                                                                                                                       // 根据目标自转速度选一个延迟时间（转得快用 high_speed_delay_time_，慢用 low_speed_delay_time_）。这个延迟代表"从现在到子弹真正出膛的总延时"
-                                                                                                                       // target->predict(future) —— 用 EKF 把目标状态推进到未来那个时刻
-                                                                                                                       // 按策略 rbSuppressiveFire 走 rbplan()，算出云台目标角和是否开火
+      auto plan = planner.plan(target, gs.bullet_speed, gs.yaw);  //核心一行。把目标、弹速、当前云台 yaw 交给规划器，得到一个 Plan 结构体。
+                                                                  // 看 planner.hpp 里这个函数的实现，它内部依次做：
+                                                                  // 如果 target 没值，直接返回 {false}（control = false，其余全 0）——即"不控制云台"
+                                                                  // target->predict(now()) —— 用 EKF 把目标状态推进到当前时刻
+                                                                  // 走 rbplan()，算出云台目标角和是否开火
 
       // 1. 设置默认值
       uint8_t name = 0;

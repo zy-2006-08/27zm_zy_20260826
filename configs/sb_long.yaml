@@ -50,23 +50,10 @@ min_detect_count: 5
 max_temp_lost_count: 11
 outpost_max_temp_lost_count: 75
 
-#####-----aimer参数-----##### 6mm
-# yaw_offset: 0.5 # degree -2.5
-# pitch_offset: 3.2 # degree 2
-# comming_angle: 60 # degree
-# leaving_angle: 20 # degree
-# decision_speed: 8 # rad/s
-# high_speed_delay_time: 0.12 # s
-# low_speed_delay_time: 0.093 # s
-
-#####-----aimer参数-----##### 12mm
-# yaw_offset: 0.3
-# pitch_offset: 0
+#####-----planner 瞄准参数-----#####
 yaw_offset: -0.45 # degree 
 pitch_offset: 1.2 # degree 2.7
-comming_angle: 60 # degree
 leaving_angle: 20 # degree
-decision_speed: 8 # rad/
 spin_select_tau: 0.6 # s 快慢判定低通时间常数
 spin_enter_high: 2.0 # rad/s 进入高速反陀螺
 spin_exit_high: 1.3 # rad/s 退出高速追板
@@ -74,9 +61,6 @@ spin_high_settle_time: 0 # s 切入高速后等待云台切换完成再开火
 spin_vyaw_settle_time: 0 # s 高速vyaw稳定后才允许开火
 spin_vyaw_stable_band: 0.4 # rad/s vyaw在此范围内才算稳定
 
-high_speed_delay_time: 0 # s   远 0.018 
-low_speed_delay_time: 0 # s    远 0.017
-far_pitch_offset: 1.2
 
 # ★激光模拟弹丸模式 (2026-09-28)
 # 上面两个 delay_time 置 0 并【没有】去掉飞行时间: rbplan() 里还有一次独立的
@@ -223,7 +207,6 @@ com_port: "/dev/ttyACM0"
 #####-----planner-----#####
 target_dist_error: 0.0
 target_h_error: 0.4
-fire_thresh: 0.003 # 
 small_armor_tolerance: 0.05
 big_armor_tolerance: 0.22
 # ★2026-09-28 开火迟滞, 解决低速时拨盘"哒 ... 哒哒哒"。

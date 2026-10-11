@@ -83,7 +83,7 @@ int main(int argc, char ** argv)
       tpl += DT;
       if (tpl - obs[i - 1].t > 0.5) continue;
       P.clock_override = tp(tpl);
-      Plan p = P.plan(T, 24.4, gimbal(tpl) * 57.3, Planner::rbSuppressiveFire);
+      Plan p = P.plan(T, 24.4, gimbal(tpl) * 57.3);
       if (!p.control) continue;
       hist.push_back({tpl, p.yaw});
       const auto x = T->ekf_x();

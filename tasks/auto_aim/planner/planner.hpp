@@ -35,13 +35,6 @@ namespace auto_aim
   class Planner
   {
     public:
-    enum ShootStrategy
-    {                     //开火策略
-      Dynamics,           //动力学
-      rbSuppressiveFire,  //旧火控,火力压制
-      rbHero,             //英雄
-      SB                  //哨兵
-    };
     Eigen::Vector4d debug_xyza;
     double aim_target_yaw;
     Planner(const std::string & config_path);
@@ -53,36 +46,13 @@ namespace auto_aim
       return clock_override ? *clock_override : std::chrono::steady_clock::now();
     }
 
-    Plan plan(Target target, double bullet_speed);
-    inline Plan plan(std::optional<Target> target, double bullet_speed, double gimbal_yaw = 0, ShootStrategy strategy = Dynamics)
+    // 上场入口: 先把目标预测到"现在", 再走 rbplan()。
+    //   predict(now()) 不能删: target 是视觉线程那一帧的状态, 规划线程每 5ms 都要推到当前时刻。
+    inline Plan plan(std::optional<Target> target, double bullet_speed, double gimbal_yaw = 0)
     {
       if (!target.has_value()) return {false};
-
-      double delay_time = std::abs(target->ekf_x()[7]) > decision_speed_ ? high_speed_delay_time_ : low_speed_delay_time_;
-
-      if (std::abs(target->ekf_x()[7]) > decision_speed_) tools::logger()->warn("std::abs(target->ekf_x()[7]) > {}", decision_speed_);
-
-      auto future = now() + std::chrono::microseconds(int(delay_time * 1e6));
-
-      target->predict(future);
-
-      switch (strategy)
-      {
-        case Dynamics:
-          return plan(*target, bullet_speed);
-          break;
-        case rbSuppressiveFire:
-          return rbplan(*target, bullet_speed, gimbal_yaw);
-          break;
-        case rbHero:
-          return rbHeroplan(*target, bullet_speed, gimbal_yaw);
-          break;
-        case SB:
-          return sbplan(*target, bullet_speed, gimbal_yaw);
-        default:
-          // tools::logger()->warn("planner model error!");
-          break;
-      }
+      target->predict(now());
+      return rbplan(*target, bullet_speed, gimbal_yaw);
     }
     Plan rbplan(Target target, double bullet_speed, double gimbal_yaw);
 
@@ -94,18 +64,12 @@ namespace auto_aim
     bool is_high_spin(const Target & target);
     // 每次 rbplan 入口调用一次, 更新低通值。
     void update_spin_select(const Target & target);
-    Plan sbplan(Target target, double bullet_speed, double gimbal_yaw);
-    bool rbShoot(Target target, double gimbal_yaw, bool tower_fixed_pitch = false);
-    Plan rbHeroplan(Target target, double bullet_speed, double gimbal_yaw);
+    bool rbShoot(Target target, double gimbal_yaw);
 
     private:
-    bool is_far = false;
     double yaw_offset_;
     double pitch_offset_;
-    double far_pitch_offset_;
-    double fire_thresh_;
     double target_dist_error_, target_h_error_;
-    double low_speed_delay_time_, high_speed_delay_time_, decision_speed_;
     double small_armor_tolerance, big_armor_tolerance;
     double tower_and_base_armor_tolerance_;
     double gimbal_control_delay;
@@ -254,16 +218,12 @@ namespace auto_aim
     TinySolver * yaw_solver_;
     TinySolver * pitch_solver_;
 
-    int last_selected_idx = -1;
-    Eigen::Vector3d last_selected_xyz = Eigen::Vector3d::Zero();
-
     void setup_yaw_solver(const std::string & config_path);
     void setup_pitch_solver(const std::string & config_path);
 
-    Eigen::Matrix<double, 2, 1> aim(const Target & target, double bullet_speed);
     Eigen::Matrix<double, 2, 1> rbaim(const Target & target, double bullet_speed);
+    // 前哨站没稳定前直接瞄中间那块板(rbplan 里用), 不走 MPC
     Eigen::Matrix<double, 2, 1> heroaim(const Target & target, double bullet_speed, double gimbal_yaw);
-    Trajectory get_trajectory(Target target, double yaw0, double bullet_speed);
     Trajectory rbget_trajectory(Target target, double yaw0, double bullet_speed);
 
     std::chrono::steady_clock::time_point outpost_z_stable_start_time_;

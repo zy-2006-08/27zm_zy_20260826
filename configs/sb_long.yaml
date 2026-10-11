@@ -62,19 +62,11 @@ spin_vyaw_settle_time: 0 # s 高速vyaw稳定后才允许开火
 spin_vyaw_stable_band: 0.4 # rad/s vyaw在此范围内才算稳定
 
 
-# ★激光模拟弹丸模式 (2026-09-28)
-# 上面两个 delay_time 置 0 并【没有】去掉飞行时间: rbplan() 里还有一次独立的
-# target.predict(bullet_traj.fly_time), 2.5m/24.4m/s 约 0.10s。激光没有飞行时间,
-# 这份提前量会让激光按"转速 x 0.1s"打在来板一侧(3rad/s 约 16 度, 5rad/s 约 30 度)。
-# laser_mode: true  -> 不预测 fly_time、pitch 不补重力、开火判定预测 +laser_latency
-# laser_latency     -> 拍照到激光点亮的总延迟(曝光/传输/串口/电控), 用 scripts/fireprobe_stats.py 标定
-# ⚠️ 上真弹丸前必须改回 false, 否则没有提前量也没有重力补偿。
-laser_mode: true
-# laser_mode: false
-laser_pitch_mode: 1 # 0直线激光 pitch, 1真实弹道 pitch, 2直线+pitch_offset
-# laser_latency: 1.5 # s
-laser_latency: 0.02 # s
-laser_aim_lead: 0.05 # s  激光模式低速追板时瞄准点往前推多久, 抵消云台跟随滞后; 0 = 不补
+# 开火模式: bullet = 实弹(按弹丸飞行时间预测, pitch 走真实弹道)
+#           laser  = 激光(不预测飞行时间, pitch 走直线, 低速追板时瞄准点前推 laser_aim_lead)
+fire_mode: bullet
+fire_link_latency: 0.02 # s, 拍照 -> 电控收到指令的链路延迟, 两种模式共用, 用 scripts/fireprobe_stats.py 标定
+laser_aim_lead: 0.05    # s, 只在 fire_mode: laser 时生效
 
 #####-----shooter参数-----#####
 first_tolerance: 3 # 近距离射击容差，degree
@@ -294,7 +286,6 @@ obs_fit_vel_only: true # true = 位置用 EKF, 只换拟合出的速度/加速�
 # fire_exit_scale: 1
 # fire_confirm_time: 0
 tower_and_base_armor_tolerance_: 0.10  # 26赛季前哨站和基地装甲板检测宽度2 
-gimbal_control_delay: 0.02 
 tower_pitch_prediction_time: 0.3
 
 max_yaw_acc: 50

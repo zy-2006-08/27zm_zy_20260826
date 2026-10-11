@@ -72,16 +72,13 @@ namespace auto_aim
     double target_dist_error_, target_h_error_;
     double small_armor_tolerance, big_armor_tolerance;
     double tower_and_base_armor_tolerance_;
-    double gimbal_control_delay;
     double tower_pitch_prediction_time_;
     double leaving_angle_;  // 反陀螺: 当前板转过正对位置多少度后切到下一块(rad), 读 yaml leaving_angle
 
-    // 激光模拟弹丸模式(yaml laser_mode, 缺省 false)。
+    // 开火模式(yaml fire_mode: bullet / laser, 缺省 bullet)。
     // 激光飞行时间为 0、走直线: 不预测 fly_time、不做重力补偿,
-    // 开火判定用 +laser_latency_ 代替 -gimbal_control_delay。
-    bool laser_mode_ = false;
-    int laser_pitch_mode_ = 0;  // 0=直线, 1=真实弹道, 2=直线+固定pitch_offset
-    double laser_latency_ = 0.0;  // s, 图像曝光/传输 + 串口 + 电控中断的总延迟
+    bool laser_ = false;               // true = 激光模式
+    double fire_link_latency_ = 0.0;   // s, 拍照 -> 电控收到指令的链路延迟, 两种模式共用
     double laser_aim_lead_ = 0.0;  // s, 激光模式低速追板时瞄准点前移时间, 抵消云台跟随滞后
 
     // 开火迟滞 + 进窗确认(yaml fire_exit_scale / fire_confirm_time, 均可缺省)

@@ -6,8 +6,8 @@
 原理: 开火时刻如果时间对齐正确, 被打的那块板应当正对我方, face 约为 0,
 且与转速无关. 若 face 随 vyaw 线性变化, 斜率就是时间误差:
     face(rad) = -vyaw * tau
-    tau > 0  -> 开火偏早(提前量过多), 应减小 laser_latency 约 tau
-    tau < 0  -> 开火偏晚(提前量不足), 应增大 laser_latency 约 |tau|
+    tau > 0  -> 开火偏早(提前量过多), 应减小 fire_link_latency 约 tau
+    tau < 0  -> 开火偏晚(提前量不足), 应增大 fire_link_latency 约 |tau|
 只统计 |vyaw| >= 1.57 rad/s (反陀螺分支) 的 CMD 行.
 """
 import collections
@@ -49,7 +49,7 @@ def main(path):
     den = sum(a[3] * a[3] for a in spin)
     tau = num / den
     print(f"\n拟合时间误差 tau = {tau * 1e3:+.1f} ms  "
-          f"({'开火偏早, 减小' if tau > 0 else '开火偏晚, 增大'} laser_latency 约 {abs(tau) * 1e3:.1f} ms)")
+          f"({'开火偏早, 减小' if tau > 0 else '开火偏晚, 增大'} fire_link_latency 约 {abs(tau) * 1e3:.1f} ms)")
 
 
 if __name__ == "__main__":

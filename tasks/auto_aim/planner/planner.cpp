@@ -138,11 +138,6 @@ namespace auto_aim
   bool Planner::rbShoot(Target target, double gimbal_yaw)
   {
     bool suggest_fire = 1;
-    // auto x_est = target.getEKFXest();
-    // double est_x =  x_est(0);
-    // double est_y = x_est(2);
-    // double est_yaw = x_est(6);
-
     const auto armor_xyza = target.armor_xyza_list();
     Eigen::Vector4d target_armor_xyza;
     auto min_dist = 1e10;
@@ -193,8 +188,7 @@ namespace auto_aim
 
     double target_yaw = target_armor_xyza(3);
 
-    aim_target_yaw = atan2(target_armor_xyza(1), target_armor_xyza(0));  //+ 0.3/57.3;
-    // feedback_yaw = gimbal_yaw;
+    aim_target_yaw = atan2(target_armor_xyza(1), target_armor_xyza(0));
 
     // ★2026-09-28 开火迟滞: 换板 / 丢目标一段时间后, 锁存状态作废, 重新走"进入窗口 + 确认"。
     const auto fire_now_t = now();
@@ -284,8 +278,6 @@ namespace auto_aim
     double angle_a = atan2(ay, ax);
     double angle_b = atan2(by, bx);
     double angle_c = atan2(target_armor_xyza(1), target_armor_xyza(0));
-    // double allow_fire_ang_max = angle_c - angle_b;
-    // double allow_fire_ang_min = angle_c - angle_a;
     double allow_fire_ang_max = std::max(angle_a, angle_b) - angle_c;
     double allow_fire_ang_min = std::min(angle_a, angle_b) - angle_c;
     allow_fire_ang_max = tools::limit_rad(allow_fire_ang_max);
@@ -412,13 +404,6 @@ namespace auto_aim
   Plan Planner::rbplan(Target target, double bullet_speed, double gimbal_yaw)
   {
     update_spin_select(target);
-    // std::cout<<target.getEKFXest()[0]<<std::endl;
-    // std::cout<<target.getEKFXest()[0]<<std::endl;
-
-    // std::cout<<"x:"<<target.getEKFXest()[0]<<std::endl;
-    // std::cout<<"y:"<<target.getEKFXest()[2]<<std::endl;
-    // std::cout<<"z:"<<target.getEKFXest()[4]<<std::endl;
-
     // 0. Check bullet speed
     if (bullet_speed < 10 || bullet_speed > 25)
     {
@@ -547,8 +532,6 @@ namespace auto_aim
       }
     }
 
-    // tools::logger()->info("h:{}, xy_d:{}, xyz_d:{}, fly_time:{}, ", target_h, min_dist, xyz.norm(), bullet_traj.fly_time);
-
     // 2. Get trajectory
     double yaw0;
     Trajectory traj;
@@ -582,7 +565,6 @@ namespace auto_aim
 
     Plan plan;
     plan.control = true;
-    //mubiaojaiiodu
     // plan.target_yaw = tools::limit_rad(traj(0, HALF_HORIZON) + yaw0);
 
     plan.target_pitch = traj(2, HALF_HORIZON);
@@ -615,7 +597,6 @@ namespace auto_aim
     //   rbaim() 的返回值丢弃, 只要它对 debug_xyza 的副作用。
     //
     // ⚠️ 纯可视化修正: plan.* 在上面已全部取完, 不改变任何发给电控的量。
-    //    回滚见 planner.cpp.bak-debugxyza。
     {
       Target target_now = target;
       rbaim(target_now, bullet_speed);
@@ -633,7 +614,7 @@ namespace auto_aim
     //   又撞到水平下限位, 远超指令范围 —— 先排除前馈这个嫌疑。
     // 【做法】位置用 rbaim() 的直接结果(已在上面 predict(fly_time)),
     //   vel = acc = 0, 让电控自己的位置环去走台阶。
-    // 低速(|vyaw| < 90deg/s)仍走 MPC, 不受影响。回滚: planner.cpp.bak-spinbypass
+    // 低速(|vyaw| < 90deg/s)仍走 MPC, 不受影响。
     const bool high_spin_plan = is_high_spin(target);
     if (high_spin_plan)
     {
@@ -648,7 +629,7 @@ namespace auto_aim
       //   回放: 往右时换板前一刻板离云台还差 1.5 度。转向反过来时, 打不出的就是往左。
       //   【做法】把车中心的方位角速度告诉电控。它只和整车平移有关, 和 MPC/换板无关,
       //   实车逐帧跳变最大 2.6 deg/s, 不会像 MPC 前馈那样换板时冲 100+ deg/s。
-      //   车速 < high_spin_center_ff_min_speed 时不发: 原地高速小陀螺(车速 ~0.15)完全原行为。
+      //   车速 < high_spin_ff_trans_speed_ 时不发: 原地高速小陀螺(车速 ~0.15)不受影响。
       {
         const auto xh = target.ekf_x();
         const double r2h = xh(0) * xh(0) + xh(2) * xh(2);
@@ -829,25 +810,19 @@ namespace auto_aim
     if (target.name == ArmorName::outpost)
     {
       double vz = target.ekf_x()(5);  // 获取当前前哨站中心Z轴坐标
-      // double delta_z = std::abs(current_z - outpost_z_baseline_);
       auto now = this->now();
 
       // 如果Z轴变化幅度大于指定阈值（例如0.05米），重置基准和计时器，并禁止开火
       if (vz > 0.09)
       {
         outpost_z_stable_start_time_ = now;
-        // suggest_fire = false;
         outpost_is_make = false;
       }
       else
       {
-        // 如果变化幅度在阈值内，判断持续时间是否达到 0.7 秒
-        double stable_duration = tools::delta_time(now, outpost_z_stable_start_time_);
-        if (
-          // stable_duration < 1 ||
-          target.update_count_ < 500)
+        // 跟踪更新次数不够 500 次(前哨站还没收敛), 不开火
+        if (target.update_count_ < 500)
         {
-          // suggest_fire = false; // 持续时间不足 0.7s，不开火
           outpost_is_make = false;
         }
         else
@@ -886,7 +861,6 @@ namespace auto_aim
     plan.fire = rbShoot(target, (gimbal_yaw) / 57.3 - yaw_offset_);
     fire_cmd_yaw_valid_ = false;
 
-    // tools::logger()->warn("fire:{}", plan.fire);
     plan.target_yaw = (aim_target_yaw + yaw_offset_) * 57.3;
 
     return plan;
@@ -940,21 +914,16 @@ namespace auto_aim
 
   Eigen::Matrix<double, 2, 1> Planner::rbaim(const Target & target, double bullet_speed)
   {
-    auto armors = target.armor_xyza_list();
-
     Eigen::Vector3d xyz;
     double yaw;
     auto min_dist = 1e10;
 
     Eigen::VectorXd ekf_x = target.ekf_x();
-    // 如果delta_angle为0，则该装甲板中心和整车中心的连线在世界坐标系的xy平面过原点
-    static std::vector<std::pair<int, double>> armorId_delta_list;
-    if (!armorId_delta_list.empty()) armorId_delta_list.clear();
     std::vector<Eigen::Vector4d> armor_xyza_list = target.armor_xyza_list();
-
     auto armor_num = armor_xyza_list.size();
-    // // 如果装甲板未发生过跳变，则只有当前装甲板的位置已知
-    // if (!target.jumped) return {true, armor_xyza_list[0]};
+    // 每块板朝向相对整车中心方位的夹角; 0 = 板正对我方
+    std::vector<std::pair<int, double>> armorId_delta_list;
+    armorId_delta_list.reserve(armor_num);
 
     // 整车旋转中心的球坐标yaw
     auto center_yaw = std::atan2(ekf_x[2], ekf_x[0]);
@@ -962,7 +931,6 @@ namespace auto_aim
     for (int i = 0; i < armor_num; i++)
     {
       auto delta_angle = tools::limit_rad(armor_xyza_list[i][3] - center_yaw);
-      // auto dist = armor_xyza_list[i].head<2>().norm();
       armorId_delta_list.emplace_back(std::make_pair(i, delta_angle));
     }
 
@@ -1017,7 +985,6 @@ namespace auto_aim
     //          到进入可打范围(约 -30 度)前 pitch 有约 40/315 = 0.13s 调整到位。
     //   注意: rbplan 在调 rbaim 之前已 predict(fly_time), 所以这里的板朝向是【子弹到达时刻】的。
     //
-    // 回滚: planner.cpp.bak-antispin2 / planner.hpp.bak-antispin2
     if (!high_spin) rbaim_high_spin_best_id_ = -1;
     if (high_spin)
     {
@@ -1066,21 +1033,16 @@ namespace auto_aim
 
   Eigen::Matrix<double, 2, 1> Planner::heroaim(const Target & target, double bullet_speed, double gimbal_yaw)
   {
-    auto armors = target.armor_xyza_list();
-
     Eigen::Vector3d xyz;
     double yaw;
     auto min_dist = 1e10;
 
     Eigen::VectorXd ekf_x = target.ekf_x();
-    // 如果delta_angle为0，则该装甲板中心和整车中心的连线在世界坐标系的xy平面过原点
-    static std::vector<std::pair<int, double>> armorId_delta_list;
-    if (!armorId_delta_list.empty()) armorId_delta_list.clear();
     std::vector<Eigen::Vector4d> armor_xyza_list = target.armor_xyza_list();
-
     auto armor_num = armor_xyza_list.size();
-    // // 如果装甲板未发生过跳变，则只有当前装甲板的位置已知
-    // if (!target.jumped) return {true, armor_xyza_list[0]};
+    // 每块板朝向相对整车中心方位的夹角; 0 = 板正对我方
+    std::vector<std::pair<int, double>> armorId_delta_list;
+    armorId_delta_list.reserve(armor_num);
 
     // 整车旋转中心的球坐标yaw
     auto center_yaw = std::atan2(ekf_x[2], ekf_x[0]);
@@ -1088,7 +1050,6 @@ namespace auto_aim
     for (int i = 0; i < armor_num; i++)
     {
       auto delta_angle = tools::limit_rad(armor_xyza_list[i][3] - center_yaw);
-      // auto dist = armor_xyza_list[i].head<2>().norm();
       armorId_delta_list.emplace_back(std::make_pair(i, delta_angle));
     }
 

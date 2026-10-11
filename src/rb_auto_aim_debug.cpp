@@ -319,8 +319,7 @@ int main(int argc, char * argv[])
     //   工厂分发见 tasks/auto_aim/yolo.cpp, 需要 -DOPENVINO_MAKE(已在
     //   tasks/auto_aim/CMakeLists.txt:25 定义)。
     //
-    // 【回退】传统CV 版本备份在 src/rb_auto_aim_debug.cpp.bak-cv,
-    //   或直接把下面这行换回 detector.detect(img)。
+    // 【回退】传统CV 版本: 把下面这行换回 detector.detect(img)(历史版本见 git log)。
     //   注意 detector 对象仍然保留(上面 :54 构造), 切回来不需要改别处。
     auto armors = yolo.detect(img);            //识别装甲板。返回 std::list<Armor> —— 这一帧找到的所有装甲板的链表。
 

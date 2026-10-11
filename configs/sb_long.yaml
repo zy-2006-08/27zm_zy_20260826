@@ -279,15 +279,3 @@ max_pitch_acc: 25
 Q_pitch: [9e6,0]
 R_pitch: [1]
 
-
-
-# auto q = gimbal.q(t - 1ms);
-
-# float yaw = ypr[0];
-# float pitch = ypr[1];
-# float roll = ypr[2];
-
-# Eigen::Quaterniond q = 
-#     Eigen::AngleAxisd(yaw, Eigen::Vector3d::UnitZ()) *   // 绕Z轴旋转yaw
-#     Eigen::AngleAxisd(pitch, Eigen::Vector3d::UnitY()) * // 绕Y轴旋转pitch
-#     Eigen::AngleAxisd(-roll, Eigen::Vector3d::UnitX());   // 绕X轴旋转roll

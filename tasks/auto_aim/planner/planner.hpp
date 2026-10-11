@@ -94,8 +94,8 @@ namespace auto_aim
     // 出膛延迟(电控收到开火 -> 弹丸出膛), 按距离两点线性插值
     double shoot_latency_near_ = 0.0, shoot_latency_far_ = 0.0;            // s
     double shoot_latency_near_dist_ = 2.0, shoot_latency_far_dist_ = 4.0;  // m
-    double high_spin_armor_tolerance_ = 0.0;  // m, 高速反陀螺小板开火窗口宽度, 0 = 沿用 small_armor_tolerance
-    double high_spin_armor_tolerance_slow_ = 0.0;  // m, 高速分支慢端(<= vyaw_slow)窗口, 0 = 不插值
+    double high_spin_armor_tolerance_ = 0.0;       // m, 高速反陀螺小板开火窗口宽度(快端, >= vyaw_fast)
+    double high_spin_armor_tolerance_slow_ = 0.0;  // m, 高速分支慢端(<= vyaw_slow)窗口
     double high_spin_window_vyaw_slow_ = 3.0;      // rad/s, 这个转速及以下用宽窗口
     double high_spin_window_vyaw_fast_ = 7.0;      // rad/s, 这个转速及以上用 high_spin_armor_tolerance
     int rbaim_high_spin_best_id_ = -1;        // rbaim() 高速分支本次选中的瞄准板(每次调用都会覆盖)
@@ -104,48 +104,42 @@ namespace auto_aim
     double low_speed_leaving_angle_ = 20.0 / 57.3;  // 低速: 板转过正对多少度就放弃、换下一块
 
     // 快慢打法判定(见 is_high_spin 注释)
-    double spin_select_tau_ = 0.0;      // s, 判定用转速的低通时间常数, 0 = 原行为
+    double spin_select_tau_ = 0.0;      // s, 判定用转速的低通时间常数
     double spin_select_vyaw_ = 0.0;     // 低通后的 |vyaw|, rad/s
     bool spin_select_init_ = false;
     bool spin_select_high_ = false;     // 带滞回的当前打法状态
     double spin_enter_high_ = 90.0 / 57.3;
     double spin_exit_high_ = 90.0 / 57.3;
     std::chrono::steady_clock::time_point spin_select_t_{};
-    static constexpr double kSpinThreshold = 90. / 57.3;  // 快慢分界, 与原代码一致
 
     // 低速换板时限制视觉 yaw 指令单周期跳变，避免新旧装甲板切换造成甩过再回正。
     double low_speed_yaw_step_limit_ = 1.0 / 57.3;
     bool yaw_command_initialized_ = false;
     double last_yaw_command_ = 0.0;
     std::chrono::steady_clock::time_point last_yaw_command_t_{};
-    // ★2026-10-07 只在换板时限幅(yaml low_speed_yaw_limit_switch_only, 缺省关 = A 版行为)
-    bool low_speed_yaw_limit_switch_only_ = false;
+    // ★2026-10-07 只在换板时限幅(在转时仍每周期限幅 = A 版)
     double low_speed_yaw_switch_jump_ = 0.5 / 57.3;  // 换板信号下单周期跳变超过它才限
     double low_speed_yaw_spin_vyaw_ = 0.6;           // rad/s, |vyaw| 超过它算在转, 走 A 版
-    bool low_speed_yaw_step_follow_center_ = false;  // 限幅加上车中心方位角变化(平移时不被钉住)
-    bool low_speed_yaw_vel_follow_cmd_ = false;      // 限幅时前馈 = 指令自己的角速度(而不是 0)
     double low_speed_yaw_follow_min_speed_ = 0.5;    // m/s, 车速低于它不放宽(小陀螺完全 A 版)
     double low_speed_yaw_follow_gain_ = 1.5;         // 放宽量 = 车中心方位角速度 x 周期 x gain(留余量给提前量变化)
     double low_speed_yaw_spin_hold_ = 0.3;           // s, 转速掉下去后保持 A 版这么久再放开
-    double low_speed_yaw_vel_limit_ = 60.0 / 57.3;   // 放开路径的 yaw 速度前馈上限, 0 = 不限
-    bool high_spin_center_vel_ff_ = false;           // 高速反陀螺+平移: yaw 速度前馈 = 车中心方位角速度(原来 0)
+    double low_speed_yaw_vel_limit_ = 60.0 / 57.3;   // rad/s, yaw 速度前馈上限
     double high_spin_center_ff_min_speed_ = 0.3;     // m/s, 车速低于它不发(原地高速小陀螺完全原行为)
     double high_spin_left_shift_ = 0.0;              // m, 高速+往左平移时开火窗口往右挪多少(正 = 落点右移), 0 = 关
     double high_spin_left_shift_min_speed_ = 0.5;    // m/s, 往左的横向车速低于它不挪(原地小陀螺不变)
     std::chrono::steady_clock::time_point last_spin_seen_t_{};
     // ★2026-10-07 平移判定 / 急刹不开火
     double trans_fire_speed_ = 0.3;       // m/s, 车速超过它算平移
-    double fire_brake_decel_ = 0.0;       // m/s^2, 50ms 内减速超过它算急刹, 0 = 关
+    double fire_brake_decel_ = 0.0;       // m/s^2, 50ms 内减速超过它算急刹
     double fire_brake_hold_ = 0.15;       // s, 急刹后多久不开火
     std::chrono::steady_clock::time_point fire_brake_until_t_{};
     std::deque<std::pair<std::chrono::steady_clock::time_point, double>> fire_speed_hist_;
-    double fire_cmd_gimbal_tol_ = 0.0; // rad, 平移时按指令判窗口 + 云台离指令小于它才开火, 0 = 关
+    double fire_cmd_gimbal_tol_ = 0.0; // rad, 平移时云台离指令小于它才开火
     double fire_cmd_yaw_ = 0.0;        // rbplan 本周期的 yaw 指令(已减 yaw_offset), 给 rbShoot 用
-    double fire_trans_aim_tol_ = 0.0;  // rad, 平移时 |指令-板预测| 门限, 0 = 关(用原窗口)
+    double fire_trans_aim_tol_ = 0.0;  // rad, 平移时 |指令-板预测| 门限
     double fire_trans_hold_scale_ = 1.25;  // 开火中门限放宽倍数
     bool fire_cmd_yaw_valid_ = false;
-    // ★2026-10-07 平移时直接拟合最近观测修正预测 (yaml obs_fit_enable, 缺省关)
-    bool obs_fit_enable_ = false;
+    // ★2026-10-07 平移时直接拟合最近观测修正预测
     double obs_fit_window_ = 0.2;     // s
     int obs_fit_order_ = 2;           // 1 = 匀速, 2 = 匀加速
     double obs_fit_max_shift_ = 0.3;  // m, 修正量超过它就不修(拟合坏了)

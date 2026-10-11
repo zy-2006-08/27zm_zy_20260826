@@ -213,47 +213,43 @@ shoot_latency_near: 0.055 # s
 shoot_latency_near_dist: 2.0 # m
 shoot_latency_far: 0.045 # s
 shoot_latency_far_dist: 4.0 # m
-# ★2026-10-04 高速反陀螺小板开火窗口宽度(m), 按板面左右宽度换成角度判断, 不按时间。0 = 沿用 small_armor_tolerance
+# ★2026-10-04 高速反陀螺小板开火窗口宽度(m), 按板面左右宽度换成角度判断, 不按时间。
 #   小板宽 0.135m; 0.10 = 落点离中心 ±5cm 内才开火, 留 1.75cm 余量不出板。8.5rad/s 时约 40ms = 两发
-high_spin_armor_tolerance: 0.025 # m
+high_spin_armor_tolerance: 0.025 # m, 7rad/s+ 一块板一发
 # ★2026-10-05 高速分支窗口按转速插值: <= vyaw_slow 用 _slow(宽, 连发), >= vyaw_fast 用上面的 high_spin_armor_tolerance(窄, 一发), 中间线性。
-#   2m/r=0.29: 3rad/s ±5cm 约 2~3 发; 7rad/s+ ±1.25cm 一发。_slow 设 0 = 不插值(恢复原行为)。
+#   2m/r=0.29: 3rad/s ±5cm 约 2~3 发; 7rad/s+ ±1.25cm 一发。
 high_spin_armor_tolerance_slow: 0.08 # m
 high_spin_window_vyaw_slow: 3.0 # rad/s
 high_spin_window_vyaw_fast: 6.5 # rad/s
-# 2026-10-08 高速反陀螺+平移时 yaw 速度前馈 = 车中心方位角速度(原来 0, 云台落后平移 ~80ms, 往一侧平移打不出); false = 原行为
-high_spin_center_vel_ff: true # 2026-10-08 回放: 只改高速+平移的前馈(平均 0 -> 10.8 deg/s, 最大 44), 指令角/开火判断 0% 变化; 原地高速/平移/慢速 A 版不变
+# 2026-10-08 高速反陀螺+平移时 yaw 速度前馈 = 车中心方位角速度(云台落后平移 ~80ms, 往一侧平移打不出)
+#   回放: 前馈平均 0 -> 10.8 deg/s(最大 44), 指令角/开火判断不变; 原地高速/平移/慢速不受影响
 high_spin_center_ff_min_speed: 0.3 # m/s, 车速低于它不发, 原地高速小陀螺不变
 # 2026-10-08 高速小陀螺+靶车往左平移: 弹丸落板左侧 1~2cm, 开火窗口往右挪(米, 正=落点右移), 0 = 关
 high_spin_left_shift: 0.015
 high_spin_left_shift_min_speed: 0.5 # m/s 往左横向车速, 低于它不挪(原地小陀螺不变)
 low_speed_yaw_step_limit_deg: 0.05 # degree/plan周期 低速yaw最大变化量
-# 2026-10-07 限幅加上车中心方位变化: 平移时(EKF 转速被带偏也)不被 0.05 度/周期钉住; false = A 版
-low_speed_yaw_step_follow_center: true # 回放 14-59-23: 板快出画面(指令落后>8度) 4.3% -> 1.7%, 瞄准误差 2.0 -> 0.8 度; 小陀螺基本不变
-low_speed_yaw_follow_min_speed: 0.5 # m/s, 车速低于它不放宽(小陀螺完全 A 版)
+# 2026-10-07 限幅加上车中心方位变化: 平移时(EKF 转速被带偏也)不被 0.05 度/周期钉住
+#   回放 14-59-23: 板快出画面(指令落后>8度) 4.3% -> 1.7%, 瞄准误差 2.0 -> 0.8 度; 小陀螺基本不变
+low_speed_yaw_follow_min_speed: 0.5 # m/s, 车速低于它不放宽、不发前馈(小陀螺完全 A 版)
 low_speed_yaw_follow_gain: 1.5 # 放宽量 = 车中心方位角速度 x 周期 x gain
-# 2026-10-07 平移实验: true = 上面的限幅只在换板时生效(平移不再被按住); false = A 版每周期限幅
-# low_speed_yaw_limit_switch_only: false
-low_speed_yaw_limit_switch_only: true
+# 2026-10-07 上面的限幅只在换板时生效(平移不再被按住); 目标在转时仍每周期限幅(A 版)
 low_speed_yaw_switch_jump_deg: 0.5 # degree, 换板时单周期跳变超过它才限幅
-low_speed_yaw_spin_vyaw: 0.6 # rad/s, 开关打开时目标转速超过它就完全按 A 版(慢速小陀螺不抖)
+low_speed_yaw_spin_vyaw: 0.6 # rad/s, 目标转速超过它就完全按 A 版(慢速小陀螺不抖)
 low_speed_yaw_spin_hold: 0.3 # s, 转速掉下去后再保持 A 版这么久才放开
-low_speed_yaw_vel_limit_deg: 60 # deg/s, 放开时 yaw 速度前馈上限(防换板猛推), 0 = 不限
-# 2026-10-08 限幅时 yaw 速度前馈 = 指令自己的角速度(不再清零)。电控 SMC 靠 d_error 工作, 给 0 等于说"目标静止", 必然稳态落后; false = 原行为
-low_speed_yaw_vel_follow_cmd: true # 回放: 平移时前馈=0 的周期 从 9.7~14.1% 降到 1.2~1.6%, 前馈平均 20->24 deg/s; 原地/慢速小陀螺不变
+low_speed_yaw_vel_limit_deg: 60 # deg/s, yaw 速度前馈上限(防换板猛推), 要 > 0
+# 2026-10-08 平移时限幅那一周期, yaw 速度前馈 = 指令自己的角速度(不清零)。电控 SMC 靠 d_error 工作, 给 0 等于说"目标静止"
+#   回放: 平移时前馈=0 的周期 从 9.7~14.1% 降到 1.2~1.6%; 原地/慢速小陀螺不变
 # 2026-10-07 车速 >= trans_fire_speed 且没在转 = 平移(开火走"平移开火第四版", 观测拟合也只在平移时用)
 trans_fire_speed: 0.3 # m/s
-# 急刹不开火: 50ms 内减速超过 fire_brake_decel 后 fire_brake_hold 秒不开火; 0 = 关
+# 急刹不开火: 50ms 内减速超过 fire_brake_decel 后 fire_brake_hold 秒不开火
 fire_brake_decel: 3.0 # m/s^2
 fire_brake_hold: 0.15 # s
-# 平移时按"指令"判开火窗口, 云台离指令小于它(度)就开火(起步加速时云台跟不上也能开火); 0 = 关
+# 平移时按"指令"判开火窗口, 云台离指令小于它(度)就开火(起步加速时云台跟不上也能开火)
 fire_cmd_gimbal_tol_deg: 2.0 # 和 fire_trans_aim_tol_deg 一起扫的
-# 2026-10-07 平移开火第四版: 指令离板预测 <= 它(度) + 云台离指令 <= fire_cmd_gimbal_tol_deg 就开火; 0 = 关(用原窗口)
+# 2026-10-07 平移开火第四版: 指令离板预测 <= 它(度) + 云台离指令 <= fire_cmd_gimbal_tol_deg 就开火
 fire_trans_aim_tol_deg: 4.0 # 回放(3 份实车日志, 实车云台角)扫出来的: 快速平移打中率(开火x命中) 12~42% -> 50~75%
 fire_trans_hold_scale: 1.25 # 开火中门限放宽倍数
-# 2026-10-07 平移时直接拟合最近观测修正预测(起步/加速跟得上); false = 关
-# obs_fit_enable: false
-obs_fit_enable: true
+# 2026-10-07 平移时直接拟合最近观测修正预测(起步/加速跟得上)
 # 回放(9 份平移日志)选的组合: 只修速度 + 2 阶 + 0.2s 窗口 + 不平滑 (起步/匀速/减速 都比关着准, 打偏比例 0.3~10%)
 obs_fit_window: 0.2 # s
 obs_fit_order: 2 # 1 匀速 / 2 匀加速

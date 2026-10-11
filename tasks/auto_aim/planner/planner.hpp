@@ -103,6 +103,38 @@ namespace auto_aim
     double low_speed_coming_angle_ = 60.0 / 57.3;   // 低速: 板还差多少度转正就开始追它
     double low_speed_leaving_angle_ = 20.0 / 57.3;  // 低速: 板转过正对多少度就放弃、换下一块
 
+    // ===================== 运动状态判断 =====================
+    // 程序里有 5 处要判断"车在不在平移 / 在不在转", 阈值和取值故意不完全一样(都是回放调出来的):
+    //
+    //  用在哪                    | 在转的判据                         | 平移的判据
+    //  --------------------------+------------------------------------+-----------------------------------------
+    //  走哪套打法(高速/低速)     | spin_select_high_ (低通+滞回 2.0/1.3)| -
+    //  观测拟合 / 开火平移判断   | high_spin 或 |vyaw|>=spinning_vyaw_ | 拟合修正前车速 >= fire_trans_speed_ (0.3)
+    //                            |   (瞬时, 无保持)                   |
+    //  低速 yaw 限幅 A 版/放开   | |vyaw|>=spinning_vyaw_ 且保持      | 拟合修正后车速 >= yaw_follow_trans_speed_ (0.5)
+    //                            |   spinning_hold_ (0.3s)            |   (放宽限幅 + 发速度前馈)
+    //  高速反陀螺速度前馈        | (已在高速档)                       | 拟合修正后车速 >= high_spin_ff_trans_speed_ (0.3)
+    //  高速+往左平移窗口右挪     | (已在高速档)                       | 往左横向车速 >= high_spin_left_shift_min_speed_ (0.5)
+    //
+    // 为什么开火用 0.3、云台放开用 0.5:
+    //   云台放开限幅/发前馈太早, 慢速小陀螺(车速 0.3~0.5 常见)会抖(10-06/10-08 实车)。
+    //   开火门限 0.3 来自平移开火回放, 慢速平移也要能开火。
+    // 为什么云台判"在转"要保持 0.3s 而开火不保持:
+    //   平移时约 14% 周期 EKF 转速被带偏到 0.6 以上, 云台要防抖所以保持; 开火判断是逐周期的, 原版就不保持。
+    // 已知不一致(B2/B3 处理): 车速 0.3~0.5 或转速刚掉到 0.6 以下的 0.3s 内,
+    //   开火按"平移"判, 云台还按"在转"(A 版限幅, 慢), 可能云台没追上就开火。
+    double spinning_vyaw_ = 0.6;                // rad/s, |vyaw| 超过它算"在转"(yaml low_speed_yaw_spin_vyaw)
+    double fire_trans_speed_ = 0.3;             // m/s, 开火/观测拟合的平移门限(yaml trans_fire_speed)
+    double yaw_follow_trans_speed_ = 0.5;       // m/s, 低速 yaw 放宽/前馈的平移门限(yaml low_speed_yaw_follow_min_speed)
+    double high_spin_ff_trans_speed_ = 0.3;     // m/s, 高速反陀螺发速度前馈的车速门限(yaml high_spin_center_ff_min_speed)
+    struct MotionFrame
+    {
+      bool high_spin = false;     // 本周期走高速打法
+      double speed_raw = 0.0;     // 观测拟合修正前的 EKF 车中心速度(m/s)
+      bool spinning_now = false;  // high_spin 或 |vyaw| >= spinning_vyaw_ (瞬时, 无保持)
+    };
+    MotionFrame motion_;          // rbplan 每周期算一次, rbShoot 读
+
     // 快慢打法判定(见 is_high_spin 注释)
     double spin_select_tau_ = 0.0;      // s, 判定用转速的低通时间常数
     double spin_select_vyaw_ = 0.0;     // 低通后的 |vyaw|, rad/s
@@ -119,17 +151,13 @@ namespace auto_aim
     std::chrono::steady_clock::time_point last_yaw_command_t_{};
     // ★2026-10-07 只在换板时限幅(在转时仍每周期限幅 = A 版)
     double low_speed_yaw_switch_jump_ = 0.5 / 57.3;  // 换板信号下单周期跳变超过它才限
-    double low_speed_yaw_spin_vyaw_ = 0.6;           // rad/s, |vyaw| 超过它算在转, 走 A 版
-    double low_speed_yaw_follow_min_speed_ = 0.5;    // m/s, 车速低于它不放宽(小陀螺完全 A 版)
     double low_speed_yaw_follow_gain_ = 1.5;         // 放宽量 = 车中心方位角速度 x 周期 x gain(留余量给提前量变化)
     double low_speed_yaw_spin_hold_ = 0.3;           // s, 转速掉下去后保持 A 版这么久再放开
     double low_speed_yaw_vel_limit_ = 60.0 / 57.3;   // rad/s, yaw 速度前馈上限
-    double high_spin_center_ff_min_speed_ = 0.3;     // m/s, 车速低于它不发(原地高速小陀螺完全原行为)
     double high_spin_left_shift_ = 0.0;              // m, 高速+往左平移时开火窗口往右挪多少(正 = 落点右移), 0 = 关
     double high_spin_left_shift_min_speed_ = 0.5;    // m/s, 往左的横向车速低于它不挪(原地小陀螺不变)
     std::chrono::steady_clock::time_point last_spin_seen_t_{};
-    // ★2026-10-07 平移判定 / 急刹不开火
-    double trans_fire_speed_ = 0.3;       // m/s, 车速超过它算平移
+    // ★2026-10-07 急刹不开火
     double fire_brake_decel_ = 0.0;       // m/s^2, 50ms 内减速超过它算急刹
     double fire_brake_hold_ = 0.15;       // s, 急刹后多久不开火
     std::chrono::steady_clock::time_point fire_brake_until_t_{};
@@ -159,8 +187,6 @@ namespace auto_aim
     bool debug_fire_trans_ = false;     // 本周期走的是平移开火判断
     Eigen::Vector2d debug_obs_fit_raw_ = Eigen::Vector2d::Zero();
     Eigen::Vector2d debug_obs_fit_applied_ = Eigen::Vector2d::Zero();
-    double fire_raw_speed_ = 0.0;       // 观测拟合修正前 EKF 车速, 给急刹判断用
-    bool fire_raw_speed_valid_ = false;
 
     private:
     bool yaw_switch_state_init_ = false;

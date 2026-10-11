@@ -83,10 +83,10 @@ namespace auto_aim
       low_speed_yaw_step_limit_ = yaml["low_speed_yaw_step_limit_deg"].as<double>() / 57.3;
     if (yaml["low_speed_yaw_switch_jump_deg"])
       low_speed_yaw_switch_jump_ = yaml["low_speed_yaw_switch_jump_deg"].as<double>() / 57.3;
-    if (yaml["low_speed_yaw_follow_min_speed"]) low_speed_yaw_follow_min_speed_ = yaml["low_speed_yaw_follow_min_speed"].as<double>();
+    if (yaml["low_speed_yaw_follow_min_speed"]) yaw_follow_trans_speed_ = yaml["low_speed_yaw_follow_min_speed"].as<double>();
     if (yaml["low_speed_yaw_follow_gain"]) low_speed_yaw_follow_gain_ = yaml["low_speed_yaw_follow_gain"].as<double>();
     if (yaml["low_speed_yaw_spin_vyaw"])
-      low_speed_yaw_spin_vyaw_ = yaml["low_speed_yaw_spin_vyaw"].as<double>();
+      spinning_vyaw_ = yaml["low_speed_yaw_spin_vyaw"].as<double>();
     if (yaml["low_speed_yaw_spin_hold"])
       low_speed_yaw_spin_hold_ = yaml["low_speed_yaw_spin_hold"].as<double>();
     low_speed_yaw_vel_limit_ = tools::read<double>(yaml, "low_speed_yaw_vel_limit_deg") / 57.3;
@@ -96,16 +96,16 @@ namespace auto_aim
       std::exit(1);
     }
     if (yaml["high_spin_center_ff_min_speed"])
-      high_spin_center_ff_min_speed_ = yaml["high_spin_center_ff_min_speed"].as<double>();
+      high_spin_ff_trans_speed_ = yaml["high_spin_center_ff_min_speed"].as<double>();
     tools::logger()->warn("[Planner] 高速反陀螺+平移: yaw 速度前馈 = 车中心方位角速度(车速 >= {:.2f}m/s, 上限 {:.0f} deg/s)",
-                          high_spin_center_ff_min_speed_, low_speed_yaw_vel_limit_ * 57.3);
+                          high_spin_ff_trans_speed_, low_speed_yaw_vel_limit_ * 57.3);
     high_spin_left_shift_ = yaml["high_spin_left_shift"] ? yaml["high_spin_left_shift"].as<double>() : 0.0;
     if (yaml["high_spin_left_shift_min_speed"])
       high_spin_left_shift_min_speed_ = yaml["high_spin_left_shift_min_speed"].as<double>();
     if (high_spin_left_shift_ != 0.0)
       tools::logger()->warn("[Planner] 高速小陀螺+往左平移: 开火窗口往右挪 {:.1f}mm(往左横向车速 >= {:.2f}m/s)",
                             high_spin_left_shift_ * 1000.0, high_spin_left_shift_min_speed_);
-    trans_fire_speed_ = yaml["trans_fire_speed"] ? yaml["trans_fire_speed"].as<double>() : 0.3;
+    fire_trans_speed_ = yaml["trans_fire_speed"] ? yaml["trans_fire_speed"].as<double>() : 0.3;
     fire_brake_decel_ = tools::read<double>(yaml, "fire_brake_decel");
     fire_brake_hold_ = yaml["fire_brake_hold"] ? yaml["fire_brake_hold"].as<double>() : 0.15;
     fire_cmd_gimbal_tol_ = tools::read<double>(yaml, "fire_cmd_gimbal_tol_deg") / 57.3;
@@ -125,9 +125,9 @@ namespace auto_aim
     tools::logger()->warn("[Planner] 平移观测拟合: {} 阶, 窗口 {:.0f}ms, 修正上限 {:.2f}m / {:.1f}m/s",
                           obs_fit_order_, obs_fit_window_ * 1e3, obs_fit_max_shift_, obs_fit_max_dv_);
     tools::logger()->warn("[Planner] 平移开火: 车速>={:.2f}m/s; 急刹(减速>{:.1f}m/s2)后 {:.0f}ms 不开火",
-                          trans_fire_speed_, fire_brake_decel_, fire_brake_hold_ * 1e3);
+                          fire_trans_speed_, fire_brake_decel_, fire_brake_hold_ * 1e3);
     tools::logger()->warn("[Planner] 低速 yaw 限幅只在换板时生效: 换板跳变阈值 {:.2f} deg, |vyaw|>={:.2f}rad/s 走 A 版(保持 {:.2f}s), 速度前馈上限 {:.0f} deg/s",
-                          low_speed_yaw_switch_jump_ * 57.3, low_speed_yaw_spin_vyaw_, low_speed_yaw_spin_hold_, low_speed_yaw_vel_limit_ * 57.3);
+                          low_speed_yaw_switch_jump_ * 57.3, spinning_vyaw_, low_speed_yaw_spin_hold_, low_speed_yaw_vel_limit_ * 57.3);
     tools::logger()->warn("[Planner] 开火模式: {}, 链路延迟 fire_link_latency={:.1f}ms{}", laser_ ? "laser(激光)" : "bullet(实弹)",
                           fire_link_latency_ * 1e3, laser_ ? ", 低速瞄准前推 laser_aim_lead" : "");
 
@@ -239,10 +239,11 @@ namespace auto_aim
     //   【急刹】车速 50ms 内掉得比 fire_brake_decel(m/s^2) 快, 认为在急刹, fire_brake_hold 秒内不开火:
     //   急刹时 EKF 的速度还没跟上, 预测点往前冲, 这时打出去的弹基本落在车前面。
     //   回放统计: 减速 > 3m/s^2 在平移段占 2~11% 周期, 静止/慢速小陀螺 < 3%。
-    // 观测拟合开着时, target 的速度已被每周期改写(会跳), 急刹/减速判断改用修正前 EKF 自己的车速
-    const double center_speed = fire_raw_speed_valid_ ? fire_raw_speed_ : std::hypot(ekf_x[1], ekf_x[3]);
-    const bool translating = !high_spin && center_speed >= trans_fire_speed_ &&
-                             std::abs(ekf_x[7]) < low_speed_yaw_spin_vyaw_;
+    // 观测拟合会改写 target 的速度(每周期在跳), 急刹/平移判断用修正前 EKF 自己的车速(rbplan 里算好的)。
+    // vyaw 这里读本函数 target 自己的(已预测到开火时刻): 前哨站 predict 时转速会被限幅, 和入口值可能不同。
+    const double center_speed = motion_.speed_raw;
+    const bool translating = !high_spin && center_speed >= fire_trans_speed_ &&
+                             std::abs(ekf_x[7]) < spinning_vyaw_;
 
     bool braking = false;
     {
@@ -461,12 +462,13 @@ namespace auto_aim
     //   只在平移(没在转、车速 >= trans_fire_speed)用; 修正量限 obs_fit_max_shift 米, 观测不够就不修。
     //   小陀螺/静止完全不走这里。
     debug_obs_fit_used_ = false;
-    fire_raw_speed_valid_ = false;
     {
       const auto xf = target.ekf_x();
-      fire_raw_speed_ = std::hypot(xf[1], xf[3]);
-      fire_raw_speed_valid_ = true;
-      const bool spinning = is_high_spin(target) || std::abs(xf[7]) >= low_speed_yaw_spin_vyaw_;
+      // 本周期运动状态, 只算这一次(见 planner.hpp MotionFrame 注释)。
+      motion_.high_spin = is_high_spin(target);
+      motion_.speed_raw = std::hypot(xf[1], xf[3]);
+      motion_.spinning_now = motion_.high_spin || std::abs(xf[7]) >= spinning_vyaw_;
+      const bool spinning = motion_.spinning_now;
       const auto & oh = target.obs_hist;
       const auto al = target.armor_xyza_list();
       const int id = (target.last_id >= 0 && target.last_id < static_cast<int>(al.size())) ? target.last_id : -1;
@@ -474,7 +476,7 @@ namespace auto_aim
       //   第一版回放: 修正量每周期跳, 指令每周期变化 0.09 -> 0.13 度, 云台跟不上, 匀速开火 70% -> 30%。
       Eigen::Vector2d raw_shift = Eigen::Vector2d::Zero(), raw_dv = Eigen::Vector2d::Zero();
       bool raw_ok = false;
-      if (!spinning && id >= 0 && std::hypot(xf[1], xf[3]) >= trans_fire_speed_ && oh.size() >= 6)
+      if (!spinning && id >= 0 && motion_.speed_raw >= fire_trans_speed_ && oh.size() >= 6)
       {
         const auto t_last = oh.back().t;
         size_t lo = oh.size() - 1;
@@ -650,7 +652,7 @@ namespace auto_aim
       {
         const auto xh = target.ekf_x();
         const double r2h = xh(0) * xh(0) + xh(2) * xh(2);
-        if (r2h > 0.04 && std::hypot(xh(1), xh(3)) >= high_spin_center_ff_min_speed_)
+        if (r2h > 0.04 && std::hypot(xh(1), xh(3)) >= high_spin_ff_trans_speed_)
         {
           double w = (xh(0) * xh(3) - xh(2) * xh(1)) / r2h;  // rad/s, 车中心方位角速度
           if (std::abs(w) > low_speed_yaw_vel_limit_) w = std::copysign(low_speed_yaw_vel_limit_, w);
@@ -689,7 +691,7 @@ namespace auto_aim
       //   换板频率区分不了(平移时 EKF 也频繁换板, 31~58% 周期), 只能用转速, 平移时约 14% 周期被误判成在转,
       //   误判时退回 A 版(稍慢, 但不抖)。转速掉到阈值以下要持续 low_speed_yaw_spin_hold 秒才放开, 防止来回切。
       const double vyaw_abs = std::abs(target.ekf_x()(7));
-      if (vyaw_abs >= low_speed_yaw_spin_vyaw_) last_spin_seen_t_ = now_t;
+      if (vyaw_abs >= spinning_vyaw_) last_spin_seen_t_ = now_t;
       const bool spin_mode = tools::delta_time(now_t, last_spin_seen_t_) < low_speed_yaw_spin_hold_;
       if (spin_mode) yaw_switch_state_init_ = false;  // 下次放开时从当前指令开始慢慢追, 不跳
       // ★2026-10-07 限幅加上"车中心方位角本周期的变化"。
@@ -709,7 +711,7 @@ namespace auto_aim
       //   注: 这里故意不加 !spin_mode。center_step 只放宽位置限幅, 不发速度前馈, 不会引起抖;
       //   而平移时约 14% 的周期 EKF 转速被带偏到 0.6 以上误判成 spin_mode,
       //   加上之后回放 13-50-38 平移开火 70.4% -> 50.6%, 14-59-23 84.4% -> 72.8%。
-      if (c_r2 > 0.04 && c_speed >= low_speed_yaw_follow_min_speed_)
+      if (c_r2 > 0.04 && c_speed >= yaw_follow_trans_speed_)
       {
         const double az_rate = (xc(0) * xc(3) - xc(2) * xc(1)) / c_r2;  // rad/s, 车中心方位角变化率
         const double dt_cyc = std::clamp(tools::delta_time(now_t, last_yaw_command_t_), 0.0, 0.02);
@@ -730,7 +732,7 @@ namespace auto_aim
       //   实车 17-00-08 慢速段车速 >= 0.5 的周期占 59%, 这些周期 100% 发了前馈(平均 25 deg/s),
       //   改之前(16-19-05)只有 0.6; 云台逐周期动 0.34 -> 2.12 度, 顺向开火 0.4%。
       //   10-06 已验证: 慢速小陀螺收到速度前馈就来回抖, 所以 A 版限幅时要顺带清零。
-      const bool vel_ff_ok = !spin_mode && c_speed >= low_speed_yaw_follow_min_speed_;
+      const bool vel_ff_ok = !spin_mode && c_speed >= yaw_follow_trans_speed_;
       const double vel_dt = std::clamp(tools::delta_time(now_t, last_yaw_command_t_), 0.003, 0.02);
       auto cmd_vel_ff = [&](double step_rad, double sign) {
         double w = step_rad / vel_dt;

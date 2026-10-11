@@ -84,7 +84,6 @@ namespace auto_aim
     // 开火迟滞 + 进窗确认(yaml fire_exit_scale / fire_confirm_time, 均可缺省)
     double fire_exit_scale_ = 1.0;    // 开火后窗口放宽倍数, 1.0 = 无迟滞(原行为)
     double fire_confirm_time_ = 0.0;  // s, 低速时进窗后需保持多久才开火, 0 = 不确认(原行为)
-    double fire_max_duration_ = 0.0;   // s, 低速一次开火最长持续时间, 0 = 不限制
     double fire_switch_settle_time_ = 0.0;  // s, 低速换板后等待云台到新板中心
     bool fire_latched_ = false;
     bool fire_cand_ = false;
@@ -92,11 +91,7 @@ namespace auto_aim
     std::chrono::steady_clock::time_point fire_last_call_t_{};
     double fire_last_armor_yaw_ = 0.0;
     std::chrono::steady_clock::time_point fire_block_until_t_{};
-    std::chrono::steady_clock::time_point fire_started_t_{};
-    bool fire_spent_ = false;          // 低速: 本块板已开过一次火, 换板/丢目标前不再开火
-    double fire_center_ratio_ = 1.0;   // 低速起火窗口相对开火窗口的比例, 1.0 = 不收窄
-    double shoot_latency_ = 0.0;              // s, 电控收到开火 -> 弹丸出膛 的机械延迟
-    bool shoot_latency_by_dist_ = false;      // true = shoot_latency 按距离两点线性插值
+    // 出膛延迟(电控收到开火 -> 弹丸出膛), 按距离两点线性插值
     double shoot_latency_near_ = 0.0, shoot_latency_far_ = 0.0;            // s
     double shoot_latency_near_dist_ = 2.0, shoot_latency_far_dist_ = 4.0;  // m
     double high_spin_armor_tolerance_ = 0.0;  // m, 高速反陀螺小板开火窗口宽度, 0 = 沿用 small_armor_tolerance
@@ -110,13 +105,6 @@ namespace auto_aim
 
     // 快慢打法判定(见 is_high_spin 注释)
     double spin_select_tau_ = 0.0;      // s, 判定用转速的低通时间常数, 0 = 原行为
-    double spin_high_settle_time_ = 0.0; // s, 切入高速打法后禁火等待云台换到中心
-    double spin_vyaw_settle_time_ = 0.0; // s, 高速vyaw稳定后才允许开火
-    double spin_vyaw_stable_band_ = 0.0;  // rad/s, vyaw在此范围内才算稳定
-    std::chrono::steady_clock::time_point spin_high_since_{};
-    std::chrono::steady_clock::time_point spin_vyaw_stable_since_{};
-    double spin_vyaw_at_stable_start_ = 0.0;
-    bool spin_high_prev_ = false;
     double spin_select_vyaw_ = 0.0;     // 低通后的 |vyaw|, rad/s
     bool spin_select_init_ = false;
     bool spin_select_high_ = false;     // 带滞回的当前打法状态
@@ -145,52 +133,32 @@ namespace auto_aim
     double high_spin_left_shift_ = 0.0;              // m, 高速+往左平移时开火窗口往右挪多少(正 = 落点右移), 0 = 关
     double high_spin_left_shift_min_speed_ = 0.5;    // m/s, 往左的横向车速低于它不挪(原地小陀螺不变)
     std::chrono::steady_clock::time_point last_spin_seen_t_{};
-    // ★2026-10-07 平移开火窗口 / 急刹不开火 (yaml, 0 = 关)
-    double trans_armor_tolerance_ = 0.0;  // m, 平移时开火窗口宽度(板面左右), 0 = 沿用 small_armor_tolerance
+    // ★2026-10-07 平移判定 / 急刹不开火
     double trans_fire_speed_ = 0.3;       // m/s, 车速超过它算平移
     double fire_brake_decel_ = 0.0;       // m/s^2, 50ms 内减速超过它算急刹, 0 = 关
     double fire_brake_hold_ = 0.15;       // s, 急刹后多久不开火
     std::chrono::steady_clock::time_point fire_brake_until_t_{};
     std::deque<std::pair<std::chrono::steady_clock::time_point, double>> fire_speed_hist_;
-    // ★2026-10-07 减速不开火 / 平移开火判断用云台提前角 (yaml, 0 = 关)
-    double fire_decel_ratio_ = 0.0;    // 车速在窗口内掉了这个比例就不开火, 0 = 关
-    double fire_decel_window_ = 0.1;   // s
-    std::deque<std::pair<std::chrono::steady_clock::time_point, double>> fire_decel_hist_;
-    double fire_gimbal_lead_ = 0.0;    // s, 平移时开火判断用云台这么久之后的角度, 0 = 关
     double fire_cmd_gimbal_tol_ = 0.0; // rad, 平移时按指令判窗口 + 云台离指令小于它才开火, 0 = 关
     double fire_cmd_yaw_ = 0.0;        // rbplan 本周期的 yaw 指令(已减 yaw_offset), 给 rbShoot 用
     double fire_trans_aim_tol_ = 0.0;  // rad, 平移时 |指令-板预测| 门限, 0 = 关(用原窗口)
     double fire_trans_hold_scale_ = 1.25;  // 开火中门限放宽倍数
     bool fire_cmd_yaw_valid_ = false;
-    // ★2026-10-07 平移加速度补偿 (yaml trans_accel_gain, 0 = 关)
-    double trans_accel_gain_ = 0.0;
-    double trans_accel_window_ = 0.1;      // s, 速度差分窗口
-    double trans_accel_max_ = 4.0;         // m/s^2, 加速度上限
-    double trans_accel_extra_time_ = 0.0;  // s, 在弹丸飞行时间之外多补的时间(云台跟随)
-    double trans_accel_deadzone_ = 1.0;    // m/s^2, 沿运动方向的加速度超过它才补(滤掉车速估计噪声)
-    std::deque<std::pair<std::chrono::steady_clock::time_point, Eigen::Vector2d>> trans_accel_hist_;
-    std::chrono::steady_clock::time_point trans_accel_last_t_{};
-
     // ★2026-10-07 平移时直接拟合最近观测修正预测 (yaml obs_fit_enable, 缺省关)
     bool obs_fit_enable_ = false;
     double obs_fit_window_ = 0.2;     // s
     int obs_fit_order_ = 2;           // 1 = 匀速, 2 = 匀加速
     double obs_fit_max_shift_ = 0.3;  // m, 修正量超过它就不修(拟合坏了)
     double obs_fit_max_dv_ = 1.5;     // m/s, 速度修正上限
-    double obs_fit_smooth_tau_ = 0.0; // s, 修正量低通时间常数, 0 = 不平滑
-    double obs_fit_blend_ = 1.0;      // 修正量用多少(0~1)
-    double obs_fit_fast_thr_ = 0.0;   // m, 修正量变化超过它就不平滑直接跟, 0 = 一直平滑
-    bool obs_fit_vel_only_ = false;   // true: 位置用 EKF, 只换拟合的速度/加速度(噪声小)
     Eigen::Vector2d obs_fit_shift_f_ = Eigen::Vector2d::Zero();
     Eigen::Vector2d obs_fit_dv_f_ = Eigen::Vector2d::Zero();
     std::chrono::steady_clock::time_point obs_fit_last_t_{};
     int obs_fit_last_id_ = -1;
 
     public:
-    Eigen::Vector2d debug_trans_accel_ = Eigen::Vector2d::Zero();  // 本周期用的加速度(回放/日志用)
     bool debug_obs_fit_used_ = false;
     bool debug_obs_fit_raw_ok_ = false;
-    int debug_fire_gate_ = 0;           // rbShoot 每道门: 1 不在窗口 2 云台离指令远 4 换板等待 8 急刹 16 已用完
+    int debug_fire_gate_ = 0;           // rbShoot 每道门: 1 不在窗口 2 云台离指令远 4 换板等待 8 急刹
     double debug_fire_win_deg_ = 0.0;   // 开火窗口半宽(度)
     double debug_fire_delta_deg_ = 0.0; // 判开火用的角度差(度)
     double debug_fire_dgim_deg_ = 0.0;  // 指令离云台(度)
@@ -201,9 +169,6 @@ namespace auto_aim
     bool fire_raw_speed_valid_ = false;
 
     private:
-    bool fire_gimbal_init_ = false;
-    double fire_last_gimbal_yaw_ = 0.0;
-    std::chrono::steady_clock::time_point fire_last_gimbal_t_{};
     bool yaw_switch_state_init_ = false;
     bool yaw_catching_up_ = false;     // 换板后正在按 step_limit 追原始瞄准角
     bool last_switch_signal_ = false;  // 上一周期有换板信号(允许错开 1 周期)

@@ -39,7 +39,6 @@ namespace auto_aim
     void predict(std::chrono::steady_clock::time_point t);
     void predict(double dt);
     // ★2026-10-07 平移加速度补偿: 车中心位置 += 0.5*a*T^2, 速度 += a*T (只动 x/y, 不动朝向/转速)
-    void apply_center_accel(double ax, double ay, double T);
 
     // ★2026-10-07 观测拟合: 最近的原始观测(同一块板, 换板就清空), 给 planner 平移时直接拟合用
     struct ObsSample

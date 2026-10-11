@@ -99,14 +99,6 @@ namespace auto_aim
     t_ = t;
   }
 
-  void Target::apply_center_accel(double ax, double ay, double T)
-  {
-    ekf_.x[0] += 0.5 * ax * T * T;
-    ekf_.x[2] += 0.5 * ay * T * T;
-    ekf_.x[1] += ax * T;
-    ekf_.x[3] += ay * T;
-  }
-
   void Target::shift_center(double dx, double dy, double dvx, double dvy)
   {
     ekf_.x[0] += dx;

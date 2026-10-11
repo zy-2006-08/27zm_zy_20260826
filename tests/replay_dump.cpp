@@ -1,7 +1,11 @@
 // 离线回放: 日志里的原始观测 -> 真实 Target + Planner, 每个规划周期输出一行指令, 写到 stdout。
 // 只用 A 版就有的接口, 所以 A 版和之后的分支都能编同一份, 两份输出直接逐行比较。
 // 用法: replay_dump <log> <config.yaml> > out.txt
-// 每行: t  yaw(deg)  yaw_vel(deg/s)  pitch(deg)  fire  vyaw(rad/s)  v(m/s)  center_azim(deg)
+// 每行(17 列):
+//   1 t  2 yaw(deg)  3 yaw_vel(deg/s)  4 pitch(deg)  5 fire  6 vyaw(rad/s)  7 v(m/s)  8 center_azim(deg)
+//   9 yaw_acc(deg/s^2)  10 pitch_vel(deg/s)  11 target_yaw(deg)  12 fire_gate(位: 1窗口 2云台远 4换板等待 8急刹 16用完)
+//   13 fire_win(deg)  14 fire_delta(deg)  15 dgim(指令-云台, deg)  16 走平移开火判断  17 观测拟合生效
+// 以 '[' 开头的行是程序日志, 对比时过滤掉(tests/golden/run_golden.sh)。
 // 云台模型: 云台角 = 30ms 前自己发出的 yaw 指令(实车日志: 云台稳定落后指令约 30ms)
 #include <chrono>
 #include <cmath>
@@ -83,8 +87,12 @@ int main(int argc, char ** argv)
       if (!p.control) continue;
       hist.push_back({tpl, p.yaw});
       const auto x = T->ekf_x();
-      std::printf("%.4f %.4f %.3f %.4f %d %.3f %.3f %.3f\n", tpl - obs[0].t, p.yaw * 57.3, p.yaw_vel * 57.3,
+      std::printf("%.4f %.4f %.3f %.4f %d %.3f %.3f %.3f", tpl - obs[0].t, p.yaw * 57.3, p.yaw_vel * 57.3,
                   p.pitch * 57.3, p.fire ? 1 : 0, x[7], std::hypot(x[1], x[3]), std::atan2(x[2], x[0]) * 57.3);
+      // 诊断列(只输出, 不改逻辑): 9~17
+      std::printf(" %.4f %.4f %.4f %d %.4f %.4f %.4f %d %d\n", p.yaw_acc * 57.3, p.pitch_vel * 57.3, p.target_yaw,
+                  P.debug_fire_gate_, P.debug_fire_win_deg_, P.debug_fire_delta_deg_, P.debug_fire_dgim_deg_,
+                  P.debug_fire_trans_ ? 1 : 0, P.debug_obs_fit_used_ ? 1 : 0);
     }
     if (obs[i].t - obs[i - 1].t > 0.5 || T->diverged())
     {

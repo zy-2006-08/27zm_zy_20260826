@@ -85,3 +85,8 @@ io/hikrobot/lib/*/libMVRender.so
 io/hikrobot/lib/*/liblog4cpp_*.so
 # 海康 SDK 在 GENICAM_CACHE 未设置时按字面创建的目录
 $(ALLUSERSPROFILE)/
+
+# 调试备份文件不进仓库 (历史版本用 git log 找)
+*.bak-*
+*.pitchfix-attempt
+__pycache__/

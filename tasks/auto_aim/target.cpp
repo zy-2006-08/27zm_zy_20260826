@@ -13,8 +13,6 @@ constexpr double TOWER_ARMOR_XTB = 0.05;  // 前哨装甲小跳变阈值(m)
 
 namespace auto_aim
 {
-  Target::GapVyawConfig Target::gap_vyaw_cfg;
-
   Target::Target(const Armor & armor, std::chrono::steady_clock::time_point t, double radius, int armor_num, Eigen::VectorXd P0_dig)
   : name(armor.name),
     armor_type(armor.type),
@@ -28,7 +26,6 @@ namespace auto_aim
     switch_count_(0),
     motion_state_(MotionState::TRANSLATION)  // 默认初始状态为平移模型
   {
-    last_update_t_ = t;  // 构造时这一帧就是第一次观测
     auto r = radius;
     priority = armor.priority;
     const Eigen::VectorXd & xyz = armor.xyz_in_world;
@@ -201,13 +198,6 @@ namespace auto_aim
           v2 = 400;  // 高机动状态，全部放开
           break;
       }
-      // ★2026-10-03 (分支 fix/ekf-switch-vyaw) yaml ekf_vyaw_q 可覆盖转速过程噪声 v2, 缺省 400 = 原行为。
-      //   v2 越大, 看不到板的空窗里 vyaw 不确定度涨得越快, 空窗后一帧就能把 vyaw 改很多。
-      if (gap_vyaw_cfg.vyaw_q > 0) v2 = gap_vyaw_cfg.vyaw_q;
-      // ★2026-10-07 yaml ekf_trans_q 可覆盖平移过程噪声 v1(车中心加速度方差), 缺省 100 = 原行为。
-      //   EKF 是匀速模型, v1 越大越相信"车速会变", 起步/加速时车速估计跟得越快, 提前量不再偏小;
-      //   代价是匀速时车速估计更抖。实车 18-36-55: 加速时提前量只有匀速的 1/3(0.7 vs 2.0 度)。
-      if (gap_vyaw_cfg.trans_q > 0) v1 = gap_vyaw_cfg.trans_q;
     }
 
     // 构造过程噪声矩阵 Q
@@ -493,34 +483,6 @@ namespace auto_aim
       r2_angle *= 3.0;  // 旋转时进一步增加对角度的不信任
     }
 
-    // ★2026-10-03 (分支, yaml ekf_angle_r_scale, 缺省 1.0 = 原行为) 板朝向观测噪声整体放大。
-    //   见 target.hpp GapVyawConfig::angle_r_scale 注释。前哨站不受影响。
-    //   ★只在低速(|vyaw| < angle_r_max_vyaw)时放大: 回放证明全速段放大会让高速(~10 rad/s)
-    //   换板关联崩掉(换板次数从 59 掉到 8, 转速估计只剩真实值一半)。
-    //   高速时板朝向变化快、单帧 1 像素误差占比小, 原 R 本来就合适; 问题只出在慢速。
-    //   ★另外跳过新建目标的前 angle_r_warmup 次更新: 新目标 vyaw 从 0 起步, 必然低于门限,
-    //   此时若少信朝向, 滤波器锁不住真实转速(高速日志回放实测: 锁不住 -> 换板关联整段崩)。
-    //   ★残差门控: 静止后突然转快时, vyaw 估计还在 0 附近(低于门限)会继续被放大噪声,
-    //   EKF 锁不住新转速(高速日志整份回放: 换板识别 59 -> 16)。真实转速差会让朝向残差逐帧累积,
-    //   1 像素噪声不会; 残差超过 angle_r_gate 就暂停放大 angle_r_bypass_frames 帧。
-    //   单帧残差门控回放无效: 1 像素噪声本身就是 ~10 度, 门控一直触发, 慢速收益全没了。
-    //   改用残差的指数平均: 噪声均值为 0, 平均后很小; 真实转速差会让残差同号累积, 平均后变大。
-    //   换板那一帧的残差是"新板对不齐"的偏差, 不算进来, 换板时清零重新累计。
-    const double ang_pred = tools::limit_rad(ekf_.x[6] + id * 2 * CV_PI / armor_num_);
-    const double ang_res = tools::limit_rad(armor.ypr_in_world[0] - ang_pred);
-    if (is_switch_) angle_res_ema_ = 0.0;
-    else angle_res_ema_ = 0.8 * angle_res_ema_ + 0.2 * ang_res;
-    if (std::abs(angle_res_ema_) > gap_vyaw_cfg.angle_r_gate) angle_r_bypass_left_ = gap_vyaw_cfg.angle_r_bypass_frames;
-    const bool angle_r_bypass = angle_r_bypass_left_ > 0;
-    if (angle_r_bypass_left_ > 0) angle_r_bypass_left_--;
-    //   ★下限 angle_r_min_vyaw: 目标没在转(静止)时不放大。静止 -> 突然转快时, 转速估计从 0 起步,
-    //   此时正常信任朝向, EKF 能立刻锁住新转速; 只有已经在慢转时才少信朝向。
-    const double abs_vyaw_now = std::abs(ekf_.x[7]);
-    if (!angle_r_bypass && name != ArmorName::outpost && update_count_ > gap_vyaw_cfg.angle_r_warmup &&
-        abs_vyaw_now >= gap_vyaw_cfg.angle_r_min_vyaw && abs_vyaw_now < gap_vyaw_cfg.angle_r_max_vyaw)
-      r2_angle *= gap_vyaw_cfg.angle_r_scale;
-
-
     // // 前哨站换板瞬间，放宽距离和高度噪声信任度防跳变
     // if (name == ArmorName::outpost && is_switch_) {
     //     r2_pitch *= 100.0;
@@ -579,26 +541,7 @@ namespace auto_aim
 
     Eigen::MatrixXd H = h_jacobian(ekf_.x, id);
 
-    // ★2026-10-03 空窗后转速修正限幅 (分支 fix/ekf-switch-vyaw, yaml ekf_gap_vyaw_limit, 缺省关)
-    //
-    // 【实测问题】日志 2026-10-03_08-58-31, 靶车真实转速 1.2~1.4 rad/s。
-    //   慢速时旧板转走到新板出现之间有 100~320ms 看不到任何板, 这段时间只预测不更新,
-    //   vyaw 的不确定度 sd 从 ~1.5 涨到 ~2.3。新板第一帧一进来, 卡尔曼增益很大,
-    //   vyaw 被一次改掉 +0.8~+2.4, 冲到 2.5~3.0, 再用约 300ms 回落。
-    //   用真实 Target 回放: 43 次换板里 40 次 vyaw 冲过 1.57, planner 因此切到高速分支提前开火。
-    //   (放大观测噪声 R 的四种做法回放都无效: 冲高来自 P 太大, 不是某一维观测太偏。)
-    //
-    // 【做法】距上次观测超过 gap_s 时, 这一帧对 vyaw 的修正量限制在 ±max_dvyaw 以内,
-    //   其余状态照常更新; 之后几帧正常收敛。只改空窗后那一帧, 连续跟踪的帧不受影响。
-    const double gap = tools::delta_time(t_, last_update_t_);
-    const double vyaw_prior = ekf_.x[7];
     ekf_.update(z, H, R, h, z_subtract);
-    if (gap_vyaw_cfg.enable && name != ArmorName::outpost && update_count_ > 1 && gap > gap_vyaw_cfg.gap_s)
-    {
-      const double dv = ekf_.x[7] - vyaw_prior;
-      if (std::abs(dv) > gap_vyaw_cfg.max_dvyaw) ekf_.x[7] = vyaw_prior + std::copysign(gap_vyaw_cfg.max_dvyaw, dv);
-    }
-    last_update_t_ = t_;
   }
 
   // 获取 EKF 状态向量

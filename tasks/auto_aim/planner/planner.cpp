@@ -67,7 +67,6 @@ namespace auto_aim
     // 缺省值 = 原来写死的 60 / leaving_angle, 不配置时行为不变。
     low_speed_coming_angle_ = (yaml["low_speed_coming_angle"] ? yaml["low_speed_coming_angle"].as<double>() : 60.0) / 57.3;
     low_speed_leaving_angle_ = yaml["low_speed_leaving_angle"] ? yaml["low_speed_leaving_angle"].as<double>() / 57.3 : leaving_angle_;
-    fire_switch_settle_time_ = yaml["fire_switch_settle_time"] ? yaml["fire_switch_settle_time"].as<double>() : 0.0;
     spin_select_tau_ = tools::read<double>(yaml, "spin_select_tau");
     spin_enter_high_ = tools::read<double>(yaml, "spin_enter_high");
     spin_exit_high_ = tools::read<double>(yaml, "spin_exit_high");
@@ -201,8 +200,6 @@ namespace auto_aim
       fire_cand_ = false;
     }
     const bool low_speed = !high_spin;
-    if (armor_switched && low_speed)
-      fire_block_until_t_ = fire_now_t + std::chrono::microseconds(static_cast<int64_t>(fire_switch_settle_time_ * 1e6));
     fire_last_call_t_ = fire_now_t;
     fire_last_armor_yaw_ = target_yaw;
 
@@ -330,7 +327,6 @@ namespace auto_aim
       debug_fire_trans_ = true;
     }
     if (cmd_gimbal_far) debug_fire_gate_ |= 2;              // 2 云台离指令 > tol
-    if (fire_now_t < fire_block_until_t_) debug_fire_gate_ |= 4;  // 4 换板等待
     if (braking) debug_fire_gate_ |= 8;                     // 8 急刹
     if (cmd_gimbal_far) suggest_fire = false;
 
@@ -339,8 +335,8 @@ namespace auto_aim
     // 进窗确认: 低速(逐块追板)时, 要求连续在窗口内 fire_confirm_time_ 才开火,
     // 滤掉换板时云台"甩过"装甲板的那一瞬间(即"哒 ... 哒哒哒"里单独那一发)。
     // 高速反陀螺时云台基本不动、板自己扫过窗口, 扫过时间本来就只有十几 ms, 不做确认。
-    if (fire_now_t < fire_block_until_t_)
-      suggest_fire = false;
+    // (原来低速换板后还要再等 fire_switch_settle_time 70ms, 已删: 换板时 fire_cand_ 被清零,
+    //  本来就要重新连续进窗 fire_confirm_time 才开火, 云台甩过板那一下待不满。)
     if (braking) suggest_fire = false;
 
     if (!suggest_fire)

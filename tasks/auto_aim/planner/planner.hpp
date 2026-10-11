@@ -84,13 +84,11 @@ namespace auto_aim
     // 开火迟滞 + 进窗确认(yaml fire_exit_scale / fire_confirm_time, 均可缺省)
     double fire_exit_scale_ = 1.0;    // 开火后窗口放宽倍数, 1.0 = 无迟滞(原行为)
     double fire_confirm_time_ = 0.0;  // s, 低速时进窗后需保持多久才开火, 0 = 不确认(原行为)
-    double fire_switch_settle_time_ = 0.0;  // s, 低速换板后等待云台到新板中心
     bool fire_latched_ = false;
     bool fire_cand_ = false;
     std::chrono::steady_clock::time_point fire_cand_start_t_{};
     std::chrono::steady_clock::time_point fire_last_call_t_{};
     double fire_last_armor_yaw_ = 0.0;
-    std::chrono::steady_clock::time_point fire_block_until_t_{};
     // 出膛延迟(电控收到开火 -> 弹丸出膛), 按距离两点线性插值
     double shoot_latency_near_ = 0.0, shoot_latency_far_ = 0.0;            // s
     double shoot_latency_near_dist_ = 2.0, shoot_latency_far_dist_ = 4.0;  // m
@@ -180,7 +178,7 @@ namespace auto_aim
     public:
     bool debug_obs_fit_used_ = false;
     bool debug_obs_fit_raw_ok_ = false;
-    int debug_fire_gate_ = 0;           // rbShoot 每道门: 1 不在窗口 2 云台离指令远 4 换板等待 8 急刹
+    int debug_fire_gate_ = 0;           // rbShoot 每道门: 1 不在窗口 2 云台离指令远 8 急刹
     double debug_fire_win_deg_ = 0.0;   // 开火窗口半宽(度)
     double debug_fire_delta_deg_ = 0.0; // 判开火用的角度差(度)
     double debug_fire_dgim_deg_ = 0.0;  // 指令离云台(度)

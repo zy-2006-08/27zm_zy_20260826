@@ -206,7 +206,6 @@ big_armor_tolerance: 0.22
 # fire_confirm_time: 低速时进窗后连续保持多久才开火(s), 0 = 不确认; 高速反陀螺不受影响
 fire_exit_scale: 2.0
 fire_confirm_time: 0.05 # s 低速进窗后连续保持多久才开火
-fire_switch_settle_time: 0.07 # s  低速换板后等待云台稳定再开火
 # ★2026-10-04 出膛延迟: 电控收到 mode==2 -> 拨盘推弹 -> 弹丸过摩擦轮。电控 Ozone dbg_shot_lat_avg 实测 62.9ms(59~65)
 # ★2026-10-05 按距离插值(小陀螺实测): 2m 要 55ms、4m 要 45ms 才打中心。超出范围外推, 不低于 0。
 shoot_latency_near: 0.055 # s

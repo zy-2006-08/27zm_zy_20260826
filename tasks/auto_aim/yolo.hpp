@@ -10,6 +10,10 @@ namespace auto_aim
   class YOLOBase
   {
     public:
+    // 虚析构: YOLO 用 unique_ptr<YOLOBase> 持有子类, 没有它子类析构不会被调用
+    // (TensorRT 后端靠析构释放显存 / CUDA stream)。
+    virtual ~YOLOBase() = default;
+
     virtual std::list<Armor> detect(const cv::Mat & img, int frame_count) = 0;
 
     virtual std::list<Armor> postprocess(double scale, cv::Mat & output, const cv::Mat & bgr_img, int frame_count) = 0;

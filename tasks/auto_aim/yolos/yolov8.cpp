@@ -13,7 +13,10 @@
 
 namespace auto_aim
 {
-  YOLOV8::YOLOV8(const std::string & config_path, bool debug) : classifier_(config_path), detector_(config_path), debug_(debug)
+  YOLOV8::YOLOV8(const std::string & config_path, bool debug) : YOLOV8(config_path, debug, true) {}
+
+  YOLOV8::YOLOV8(const std::string & config_path, bool debug, bool load_model)
+  : classifier_(config_path), detector_(config_path), debug_(debug)
   {
     auto yaml = YAML::LoadFile(config_path);
 
@@ -34,6 +37,8 @@ namespace auto_aim
 
     save_path_ = "imgs";
     std::filesystem::create_directory(save_path_);
+
+    if (!load_model) return;  // TensorRT 子类自己加载 engine
 
     auto model = core_.read_model(model_path_);
     ov::preprocess::PrePostProcessor ppp(model);
@@ -86,19 +91,24 @@ namespace auto_aim
     auto input = cv::Mat(416, 416, CV_8UC3, cv::Scalar(0, 0, 0));
     auto roi = cv::Rect(0, 0, w, h);
     cv::resize(bgr_img, input(roi), {w, h});
-    ov::Tensor input_tensor(ov::element::u8, {1, 416, 416, 3}, input.data);
 
-    /// infer
+    /// infer (OpenVINO 或 TensorRT, 见 infer())
+    cv::Mat output = infer(input);
+
+    return parse(scale, output, raw_img, frame_count);
+  }
+
+  cv::Mat YOLOV8::infer(const cv::Mat & input_416_bgr)
+  {
+    ov::Tensor input_tensor(ov::element::u8, {1, 416, 416, 3}, input_416_bgr.data);
     auto infer_request = compiled_model_.create_infer_request();
     infer_request.set_input_tensor(input_tensor);
     infer_request.infer();
 
-    // postprocess
     auto output_tensor = infer_request.get_output_tensor();
     auto output_shape = output_tensor.get_shape();
-    cv::Mat output(output_shape[1], output_shape[2], CV_32F, output_tensor.data());
-
-    return parse(scale, output, raw_img, frame_count);
+    // clone: output_tensor 属于 infer_request, 出了作用域就释放, 必须拷一份出来
+    return cv::Mat(output_shape[1], output_shape[2], CV_32F, output_tensor.data()).clone();
   }
 
   std::list<Armor> YOLOV8::parse(double scale, cv::Mat & output, const cv::Mat & bgr_img, int frame_count)

@@ -85,3 +85,7 @@ io/hikrobot/lib/*/libMVRender.so
 io/hikrobot/lib/*/liblog4cpp_*.so
 # 海康 SDK 在 GENICAM_CACHE 未设置时按字面创建的目录
 $(ALLUSERSPROFILE)/
+
+# TensorRT engines are machine-specific; this ONNX export is not yet validated.
+*.engine
+/assets/yolov8.onnx

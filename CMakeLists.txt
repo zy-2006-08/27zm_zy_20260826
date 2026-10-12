@@ -66,6 +66,16 @@ endif()
 find_package(OpenVINO REQUIRED)
 
 # ---------------------------------------------------------------------------
+# 海康 MVS 系统库目录：x86 安装包放在 /opt/MVS/lib/64，
+# Jetson(aarch64) 安装包放在 /opt/MVS/lib/aarch64。下面 camera_tuning / hik_grab 共用。
+# ---------------------------------------------------------------------------
+if(EXISTS "/opt/MVS/lib/aarch64/libMvCameraControl.so")
+    set(MVS_LIB_DIR "/opt/MVS/lib/aarch64")
+else()
+    set(MVS_LIB_DIR "/opt/MVS/lib/64")
+endif()
+
+# ---------------------------------------------------------------------------
 # 头文件搜索路径 / Include directories
 # 这四行都是必需的，缺一行就编译不过：
 #   1) EIGEN3_INCLUDE_DIR   -> #include <Eigen/Dense>
@@ -107,8 +117,6 @@ target_link_libraries(rb_auto_aim_debug ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_ai
 # ---------------------------------------------------------------------------
 add_executable(auto_aim_test tests/auto_aim_test.cpp)
 target_link_libraries(auto_aim_test ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim tools io)
-add_executable(replay_switch_guard tests/replay_switch_guard.cpp)
-target_link_libraries(replay_switch_guard ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim tools io)
 
 # ---------------------------------------------------------------------------
 # 标定程序 / Calibration
@@ -156,12 +164,17 @@ target_link_libraries(test_simple ${OpenCV_LIBS} fmt::fmt yaml-cpp tools io)
 # 变成了硬依赖，而本程序需要在只装了一家 SDK 的机器上也能用。
 add_executable(camera_tuning calibration/camera_tuning.cpp)
 
+# 大恒头文件 GxIAPI.h 在仓库 io/daheng/include 里。本目标不链接 io，
+# 拿不到 io 的 PUBLIC include 路径，所以要单独加，否则报 "GxIAPI.h: No such file"。
+# x86 小电脑能编过只是因为 Galaxy SDK 碰巧把头文件装进了系统目录。
+target_include_directories(camera_tuning PRIVATE ${PROJECT_SOURCE_DIR}/io/daheng/include)
+
 # 海康头文件与库：优先系统安装的 /opt/MVS，回落到仓库内。
 # 与上面 hik_grab 的处理保持一致。
 if(EXISTS "/opt/MVS/include/MvCameraControl.h")
     target_include_directories(camera_tuning PRIVATE /opt/MVS/include)
-    target_link_directories(camera_tuning PRIVATE /opt/MVS/lib/64)
-    set_target_properties(camera_tuning PROPERTIES INSTALL_RPATH "/opt/MVS/lib/64"
+    target_link_directories(camera_tuning PRIVATE ${MVS_LIB_DIR})
+    set_target_properties(camera_tuning PROPERTIES INSTALL_RPATH "${MVS_LIB_DIR}"
                                                    BUILD_WITH_INSTALL_RPATH TRUE)
 else()
     target_include_directories(camera_tuning PRIVATE ${PROJECT_SOURCE_DIR}/io/hikrobot/include)
@@ -191,8 +204,8 @@ add_executable(hik_grab calibration/hik_grab.cpp)
 
 if(EXISTS "/opt/MVS/include/MvCameraControl.h")
     target_include_directories(hik_grab PRIVATE /opt/MVS/include)
-    target_link_directories(hik_grab PRIVATE /opt/MVS/lib/64)
-    set_target_properties(hik_grab PROPERTIES INSTALL_RPATH "/opt/MVS/lib/64"
+    target_link_directories(hik_grab PRIVATE ${MVS_LIB_DIR})
+    set_target_properties(hik_grab PROPERTIES INSTALL_RPATH "${MVS_LIB_DIR}"
                                               BUILD_WITH_INSTALL_RPATH TRUE)
     message(STATUS "-------------------- hik_grab: 使用 /opt/MVS --------------------")
 else()

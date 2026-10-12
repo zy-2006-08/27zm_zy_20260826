@@ -139,10 +139,17 @@ esac
 
 # GUI 程序需要 DISPLAY。SSH 会话里没有，指向小电脑本机的 X。
 # Ubuntu 跑 Wayland 时 GNOME 通过 Xwayland 提供 :0，认证文件在 mutter 那份。
+#
+# 显示号不能写死 :0：x86 小电脑跑 Wayland，Xwayland 占 :0；
+# Jetson 跑 Xorg，gdm 登录后桌面在 :1（/tmp/.X11-unix/X1）。
+# 所以取 /tmp/.X11-unix 下第一个 X<n> 套接字作为显示号。
 if [ -z "${DISPLAY:-}" ] && [ "$(uname)" != Darwin ]; then
-    export DISPLAY=:0
+    XSOCK="$(ls /tmp/.X11-unix/ 2>/dev/null | grep -E '^X[0-9]+$' | sort -V | head -1)"
+    export DISPLAY=":${XSOCK#X}"
+    [ "$DISPLAY" = ":" ] && export DISPLAY=:0
     if [ -z "${XAUTHORITY:-}" ]; then
-        XAUTH="$(ls /run/user/$(id -u)/.mutter-Xwaylandauth.* 2>/dev/null | head -1)"
+        # Wayland(Xwayland) 的认证文件在 mutter 那份；Xorg 的在 gdm 那份
+        XAUTH="$(ls /run/user/$(id -u)/.mutter-Xwaylandauth.* /run/user/$(id -u)/gdm/Xauthority 2>/dev/null | head -1)"
         [ -n "$XAUTH" ] && export XAUTHORITY="$XAUTH"
     fi
     echo "==> SSH 会话，已设 DISPLAY=$DISPLAY（窗口出现在小电脑的显示器上）"
@@ -151,6 +158,48 @@ fi
 # 必须在产物目录里运行：程序内部用 ../configs/xxx.yaml 这类相对路径，
 # 在别处跑会找不到配置直接 exit(1)。
 cd "$ROOT/$BUILD_DIR"
+
+# 海康 MVS 运行环境。VS Code 任务 / ssh 直接执行命令都是非登录 shell，
+# 读不到 /etc/profile.d 和 ~/.bashrc 里 MVS 安装器写的变量，
+# 结果海康枚举返回 0x80000006（传输层插件找不到）→"未探测到任何相机"。
+# 这里兜底补上：x86 在 /opt/MVS/lib/64，Jetson 在 /opt/MVS/lib/aarch64。
+if [ -d /opt/MVS/lib ]; then
+    export MVCAM_SDK_PATH="${MVCAM_SDK_PATH:-/opt/MVS}"
+    export MVCAM_COMMON_RUNENV="${MVCAM_COMMON_RUNENV:-/opt/MVS/lib}"
+    export MVCAM_GENICAM_CLPROTOCOL="${MVCAM_GENICAM_CLPROTOCOL:-/opt/MVS/lib/CLProtocol}"
+    export ALLUSERSPROFILE="${ALLUSERSPROFILE:-/opt/MVS/MVFG}"
+    for d in /opt/MVS/lib/aarch64 /opt/MVS/lib/64; do
+        [ -d "$d" ] && case ":${LD_LIBRARY_PATH:-}:" in *":$d:"*) ;; *) export LD_LIBRARY_PATH="$d${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}";; esac
+    done
+fi
+
+# ---- 断开 SSH / 拔网线后程序继续跑 ----
+# 直接 exec 的话程序挂在这个 SSH 会话上，网线一拔 / WiFi 一断，sshd 关掉会话，
+# 程序收到 SIGHUP 就被杀了 —— 车正在小陀螺，自瞄突然没了。
+# 所以 SSH 会话里改成放进 screen 后台会话 "aim"：
+#   - 终端照常实时看日志（attach 着），按 Ctrl+C 照常结束程序
+#   - 拔网线 / 关 VS Code / WiFi 断：程序不受影响继续跑
+#   - 重新连上后看回日志：bash scripts/aim.sh attach   (退出查看但不停程序: Ctrl+A 再按 D)
+#   - 停程序：bash scripts/aim.sh stop ；下次按 Alt+N 也会自动先停旧的
+# 不在 SSH 里（小电脑本机终端 / 开机自启）就照旧前台跑。
+# 设 RUN_FOREGROUND=1 可强制前台（老行为）。
+if [ -n "${SSH_CONNECTION:-}" ] && [ -z "${RUN_FOREGROUND:-}" ] && [ -z "${STY:-}" ] && command -v screen >/dev/null; then
+    screen -S aim -X quit >/dev/null 2>&1 || true
+    LOG="$ROOT/$BUILD_DIR/logs/aim_screen.log"
+    mkdir -p "$(dirname "$LOG")"
+    : > "$LOG"
+    # 显式把 DISPLAY/XAUTHORITY 带进 screen，窗口仍出现在小电脑显示器上
+    # 环境变量 screen 会从当前 shell 继承（DISPLAY、MVS、LD_LIBRARY_PATH 都在上面 export 过了）
+    screen -dmS aim -L -Logfile "$LOG" "./$TARGET" "$@"
+    echo "==> 已在后台 screen 会话 'aim' 中运行 ./$TARGET $*"
+    echo "==> 现在拔网线 / 断 WiFi 程序都不会停。重连后: bash scripts/aim.sh attach"
+    echo
+    sleep 0.3
+    # 前台 attach，体验和以前一样：能看日志、Ctrl+C 停程序。
+    # 会话断了这个 attach 进程会被杀，但 screen 里的程序不受影响。
+    exec screen -r aim
+fi
+
 echo "==> 运行 ./$TARGET $*"
 echo
 exec "./$TARGET" "$@"

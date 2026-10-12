@@ -52,3 +52,26 @@ add_library(auto_aim OBJECT
 add_subdirectory(planner/tinympc)
 
 target_link_libraries(auto_aim io openvino::runtime tinympcstatic)
+
+# ------------------------------------------------------------------------------
+# TensorRT 后端 (只有 Jetson 有): 自动检测, 找到就编进去, 找不到静默跳过。
+# x86 小电脑 OpenVINO 跑 yolov8 约 5ms; Jetson Orin NX 的 ARM CPU 跑要约 150ms,
+# 必须走 GPU。yolo.cpp 运行时按 engine 文件是否存在再决定用哪个后端。
+# 不想编 TRT 可以 cmake -B build -DUSE_TENSORRT=OFF。
+# ------------------------------------------------------------------------------
+option(USE_TENSORRT "Build TensorRT yolov8 backend when TensorRT is found" ON)
+if(USE_TENSORRT)
+    find_path(TENSORRT_INCLUDE_DIR NvInfer.h PATHS /usr/include/aarch64-linux-gnu /usr/local/tensorrt/include)
+    find_library(TENSORRT_INFER_LIBRARY nvinfer PATHS /usr/lib/aarch64-linux-gnu /usr/local/tensorrt/lib)
+    find_package(CUDAToolkit QUIET)
+endif()
+
+if(USE_TENSORRT AND TENSORRT_INCLUDE_DIR AND TENSORRT_INFER_LIBRARY AND CUDAToolkit_FOUND)
+    target_sources(auto_aim PRIVATE yolos/yolov8_trt.cpp)
+    target_compile_definitions(auto_aim PRIVATE TENSOR_RT_MAKE)
+    target_include_directories(auto_aim PRIVATE ${TENSORRT_INCLUDE_DIR})
+    target_link_libraries(auto_aim ${TENSORRT_INFER_LIBRARY} CUDA::cudart)
+    message(STATUS "-------------------- auto_aim: TensorRT 后端 ON (${TENSORRT_INFER_LIBRARY}) --------------------")
+else()
+    message(STATUS "-------------------- auto_aim: TensorRT 后端 OFF (未找到 TensorRT, 只用 OpenVINO) --------------------")
+endif()

@@ -622,6 +622,12 @@ namespace auto_aim
     debug_fire_delta_deg_ = control_delta_angle * 57.3;
     debug_fire_dgim_deg_ = tools::limit_rad(fire_cmd_yaw_ - gimbal_yaw) * 57.3;
     debug_fire_trans_ = false;
+    // Predicted-frame face (diagnostic only).
+    {
+      const double sign_v = ekf_x[7] >= 0 ? 1.0 : -1.0;
+      debug_fire_pface_deg_ =
+        tools::limit_rad(target_yaw - std::atan2(ekf_x[2], ekf_x[0])) * sign_v * 57.2958;
+    }
     if (!suggest_fire) debug_fire_gate_ |= 1;               // 1 指令/枪口不在窗口
     // ★2026-10-07 平移开火窗口改判(yaml fire_trans_aim_tol_deg, 0 = 关)。
     //   【原因】实车 14-39-24 匀速平移: 枪口在板上 83%, 实际开火只有 25%; 不开火的周期里 84% 卡在上面的窗口判断。

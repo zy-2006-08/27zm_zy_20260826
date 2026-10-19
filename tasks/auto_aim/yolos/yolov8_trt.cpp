@@ -2,6 +2,7 @@
 
 #include <yaml-cpp/yaml.h>
 
+#include <cstring>
 #include <fstream>
 #include <stdexcept>
 
@@ -95,25 +96,16 @@ namespace auto_aim
 
   cv::Mat YOLOV8TRT::infer(const cv::Mat & input_416_bgr)
   {
-    // 与 OpenVINO 侧 PrePostProcessor 等价: BGR u8 HWC -> RGB f32 /255 CHW
-    // 直接写进页锁定内存, 省一次拷贝。
-    const int area = kInput * kInput;
-    float * r = h_input_;
-    float * g = h_input_ + area;
-    float * b = h_input_ + 2 * area;
-    for (int y = 0; y < kInput; y++)
-    {
-      const uint8_t * p = input_416_bgr.ptr<uint8_t>(y);
-      const int row = y * kInput;
-      for (int x = 0; x < kInput; x++, p += 3)
-      {
-        b[row + x] = p[0] * (1.0f / 255.0f);
-        g[row + x] = p[1] * (1.0f / 255.0f);
-        r[row + x] = p[2] * (1.0f / 255.0f);
-      }
-    }
+    // 与 OpenVINO 侧 PrePostProcessor 等价: BGR u8 HWC -> RGB f32 /255, NCHW。
+    // 必须用 OpenCV 的向量化实现: 手写逐像素循环在 Jetson 的 ARM 上要几十毫秒,
+    // 会把整条链路拖到 20 多 fps (实测过, 别再改回去)。
+    cv::Mat rgb;
+    cv::cvtColor(input_416_bgr, rgb, cv::COLOR_BGR2RGB);
+    cv::Mat blob = cv::dnn::blobFromImage(
+      rgb, 1.0 / 255.0, cv::Size(kInput, kInput), cv::Scalar(), /*swapRB=*/false, /*crop=*/false, CV_32F);
+    std::memcpy(h_input_, blob.ptr<float>(), 3ull * kInput * kInput * sizeof(float));
 
-    const size_t in_bytes = 3ull * area * sizeof(float);
+    const size_t in_bytes = 3ull * kInput * kInput * sizeof(float);
     const size_t out_bytes = static_cast<size_t>(out_rows_) * out_cols_ * sizeof(float);
     cuda_check(cudaMemcpyAsync(d_input_, h_input_, in_bytes, cudaMemcpyHostToDevice, stream_), "H2D");
     if (!context_->enqueueV3(stream_)) throw std::runtime_error("[YOLOV8TRT] enqueueV3 失败");

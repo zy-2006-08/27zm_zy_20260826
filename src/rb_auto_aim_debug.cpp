@@ -23,6 +23,7 @@
 #include "tools/math_tools.hpp"                // 第 21 行：数学工具（四元数转欧拉角、算时间差）
 #include "tools/plotter.hpp"                   // 第 22 行：把数据发出去画曲线
 #include "tools/thread_safe_queue.hpp"         // 第 23 行：线程安全队列
+#include "tools/yaml.hpp"
 
 using namespace std::chrono_literals;  //这行让你能直接写 5ms、3ms 这种字面量
 using namespace tools;
@@ -51,7 +52,11 @@ int main(int argc, char * argv[])
                                    // ⚠️ 它的构造函数末尾会等第一帧数据，所以 C 板不通电 / 串口没插，这个程序会卡死在第 45 行。这是最常见的"程序没反应"原因。
   io::Camera camera(config_path);  //打开相机。会自动探测是大恒还是海康，按 yaml 里的曝光、增益、gamma 去配置传感器。
 
-  auto_aim::YOLO yolo(config_path, true);  //true 通常是 "debug 模式"开关，会让它多画点东西/多打日志
+  // yolo_debug: 是否打开 YOLO 检测框调试窗口(每帧克隆整张图再 imshow, 约 2~6ms)。
+  // 默认关闭保帧率; 调识别时在 yaml 里加 yolo_debug: true 即可打开。
+  const auto cfg = tools::load(config_path);
+  const bool yolo_debug = cfg["yolo_debug"] ? cfg["yolo_debug"].as<bool>() : false;
+  auto_aim::YOLO yolo(config_path, yolo_debug);  //true 通常是 "debug 模式"开关，会让它多画点东西/多打日志
   auto_aim::Detector detector(config_path, true);
   auto_aim::Solver solver(config_path);             //坐标解算器，这是视觉最核心也最难理解的一块。它干的事：
                                                     // 已知装甲板在图像上的 4 个角点（像素坐标），已知装甲板的真实物理尺寸（比如 135mm × 55mm），已知相机的内参矩阵和畸变系数（标定标出来的），就能反算出"这块装甲板在相机前方多远、偏左偏右多少、朝向如何"。这个过程叫 PnP（Perspective-n-Point）。
@@ -213,9 +218,10 @@ int main(int argc, char * argv[])
           const double yaw_err = tools::limit_rad(plan.yaw - gs.yaw / 57.2958) * 57.2958;
           const double pitch_err = tx_pitch * 57.2958 + gs.pitch;
           tools::logger()->info(
-            "FIREPROBE {} face={:.1f} id={} yaw_err={:.2f} pitch_err={:.2f} vyaw={:.2f} r={:.3f} bullets={} "
+            "FIREPROBE {} face={:.1f} pface={:.1f} id={} yaw_err={:.2f} pitch_err={:.2f} vyaw={:.2f} r={:.3f} bullets={} "
             "cx={:.3f} cy={:.3f} vx={:.3f} vy={:.3f} v={:.3f} d={:.2f}",
-            fire_edge ? "CMD" : "SHOT", best * 57.2958, best_i, yaw_err, pitch_err, ex[7], ex[8], gs.bullet_count,
+            fire_edge ? "CMD" : "SHOT", best * 57.2958, planner.debug_fire_pface_deg_, best_i, yaw_err, pitch_err,
+            ex[7], ex[8], gs.bullet_count,
             ex[0], ex[2], ex[1], ex[3], std::hypot(ex[1], ex[3]), std::hypot(ex[0], ex[2]));
         }
       }

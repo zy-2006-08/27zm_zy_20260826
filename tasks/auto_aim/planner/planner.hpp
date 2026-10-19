@@ -233,7 +233,10 @@ namespace auto_aim
     double debug_fire_win_deg_ = 0.0;   // 开火窗口半宽(度)
     double debug_fire_delta_deg_ = 0.0; // 判开火用的角度差(度)
     double debug_fire_dgim_deg_ = 0.0;  // 指令离云台(度)
-    bool debug_fire_trans_ = false;     // 本周期走的是平移开火判断
+    bool debug_fire_trans_ = false;
+    // Predicted-frame face: plate angle vs facing point AFTER predicting to bullet
+    // arrival time. 0 = on time, >0 = late, <0 = early. Never wraps at 90 deg.
+    double debug_fire_pface_deg_ = 0.0;     // 本周期走的是平移开火判断
     Eigen::Vector2d debug_obs_fit_raw_ = Eigen::Vector2d::Zero();
     Eigen::Vector2d debug_obs_fit_applied_ = Eigen::Vector2d::Zero();
     double fire_raw_speed_ = 0.0;       // 观测拟合修正前 EKF 车速, 给急刹判断用

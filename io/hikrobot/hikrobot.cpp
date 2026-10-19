@@ -8,6 +8,9 @@ using namespace std::chrono_literals;
 
 namespace io
 {
+  // ===== STALEDBG (temporary diagnostic, safe to delete) =====
+  static double g_cvt_ms = -1;
+  // ===== /STALEDBG =====
   HikRobot::HikRobot(std::string sn, double exposure_us, double gain, const std::string & vid_pid, bool flip, bool mirror)
   : CameraBase(sn), exposure_us_(exposure_us), gain_(gain), queue_(1), daemon_quit_(false), vid_(-1), pid_(-1), flip_(flip), mirror_(mirror)
   {
@@ -50,6 +53,29 @@ namespace io
 
     img = data.img;
     timestamp = data.timestamp;
+
+    // ===== STALEDBG (temporary diagnostic, safe to delete) =====
+    // age: 这一帧从"拍到"到"被视觉线程取走"已经过去多久。
+    // 预测是从 timestamp 推到 now, 所以 age 越大, 实际提前量越不足。
+    {
+      static double sum_age = 0, max_age = 0, sum_cvt = 0;
+      static int n = 0;
+      static auto last = std::chrono::steady_clock::now();
+      const double age_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - timestamp).count();
+      sum_age += age_ms;
+      if (age_ms > max_age) max_age = age_ms;
+      if (g_cvt_ms >= 0) sum_cvt += g_cvt_ms;
+      n++;
+      if (std::chrono::steady_clock::now() - last > std::chrono::seconds(2))
+      {
+        last = std::chrono::steady_clock::now();
+        tools::logger()->warn("[STALEDBG] n={} age avg={:.1f}ms max={:.1f}ms  cvt avg={:.1f}ms",
+                              n, sum_age / n, max_age, n ? sum_cvt / n : 0.0);
+        sum_age = max_age = sum_cvt = 0;
+        n = 0;
+      }
+    }
+    // ===== /STALEDBG =====
   }
 
   bool HikRobot::try_read(cv::Mat & img, std::chrono::steady_clock::time_point & timestamp)
@@ -220,7 +246,9 @@ namespace io
           {PixelType_Gvsp_BayerGB8, cv::COLOR_BayerGB2RGB},
           {PixelType_Gvsp_BayerBG8, cv::COLOR_BayerBG2RGB}};
 
+        const auto cvt_t0 = std::chrono::steady_clock::now();
         cv::cvtColor(img, dst_image, type_map.at(pixel_type));
+        g_cvt_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - cvt_t0).count();
         img = dst_image;
 
         // 翻转和镜像

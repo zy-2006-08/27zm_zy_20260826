@@ -199,6 +199,23 @@
             }
         },
         {
+            // 看最近一次运行的日志摘要, 不用自己找文件(见 scripts/log_summary.py)。
+            // 用法: 顶上菜单「终端」->「运行任务...」-> 看最新日志摘要。
+            // 结果会在编辑器里打开 build/日志摘要.txt; 想看某一份旧日志: 在左边打开那个 .log, 按 Alt+N。
+            "label": "看最新日志摘要",
+            "type": "shell",
+            "command": "python3 scripts/log_summary.py --open",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            }
+        },
+        {
             // 删掉产物目录重来。编译出诡异问题时用。
             "label": "clean rebuild",
             "type": "shell",

@@ -18,6 +18,13 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REL_FILE="${1:-}"
 shift || true
 
+# 当前打开的是日志(.log): Alt+N 显示这份日志的摘要(scripts/log_summary.py), 不启动任何程序。
+# 没有这一段时 .log 会回退到下面的默认目标, 也就是把上场程序直接跑起来。
+case "$REL_FILE" in
+    *.log) exec python3 "$ROOT/scripts/log_summary.py" "$REL_FILE" --open ;;
+    *日志摘要.txt) exec python3 "$ROOT/scripts/log_summary.py" --open ;;
+esac
+
 # 产物目录：Mac 原生编译在 build-mac，Linux 在 build
 if [ "$(uname)" = Darwin ]; then BUILD_DIR="build-mac"; else BUILD_DIR="build"; fi
 
